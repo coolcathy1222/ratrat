@@ -37,7 +37,7 @@ export const LEVELS: LevelDef[] = [
     theme: 'cream',
     timeLimit: null,
     hintLimit: 2,
-    tip: '从鼠洞一笔连到奶酪，只能横着或竖着走',
+    tip: '从鼠鼠出发，收齐宝物再回洞',
     start: { x: 0, y: 3 },
     end: { x: 3, y: 1 },
     cells: [
@@ -805,7 +805,7 @@ export const LEVELS: LevelDef[] = [
     theme: 'crown',
     timeLimit: 104,
     hintLimit: 1,
-    tip: '终点旁边还有别的鼠鼠',
+    tip: '鼠洞旁还有宝物，不要提前回家',
     start: { x: 2, y: 6 },
     end: { x: 5, y: 4 },
     cells: [
@@ -1366,7 +1366,7 @@ export const LEVELS: LevelDef[] = [
     theme: 'crown',
     timeLimit: 116,
     hintLimit: 1,
-    tip: '把每只都连上，再进奶酪',
+    tip: '收齐每格的宝物，再进鼠洞',
     start: { x: 6, y: 0 },
     end: { x: 3, y: 4 },
     cells: [
@@ -1481,6 +1481,35 @@ export const LEVELS: LevelDef[] = [
     ],
   },
 ]
+
+const extraRoutes: Array<[number, number, string]> = [
+  [1, 0, 'RRDLDRDRURULURRDDDLDLLDLUULULDDRDLDRRRRUR'],
+  [1, 0, 'RRRDRURDDDDDDLUUUULLULDLLDDDRUURRRDDDLUUL'],
+  [1, 7, 'UURULLUURDRUULLURRRRRRDLLLDRDLDRDDRUUUURDDDDDLL'],
+  [1, 5, 'RUURDDDLLLDRRRRRRULLUURDRUUULDLUURRULLLDDLULDDL'],
+  [1, 4, 'DDRURRDDRRULURULURUUULLDRDLDLUUULDLULDDRRDLLDDD'],
+  [7, 5, 'UUULDLUURRULLLLDRDLLUULLDRDLDRDLDRDLDRRUUUURRDLDDDRUUR'],
+  [5, 6, 'UURULLDDLDDLUULDDLUUURRRULURRRRULLLLLDDLUUURRRRRRRDDDD'],
+  [4, 6, 'DRURDRUUUUUUULLDRDLLLLURRULLLLDRDLDDDDDRRRULLUUURDRURD'],
+  [2, 1, 'LDRRRRDRDDRUUULURULLLLLLLDDDRDLDRDLDRRRRRRRULLLLLURULU'],
+  [6, 5, 'LUURRULURULLLDRDLLUULDLULDDRRDRRDLLLULDDDDRRULURRRDLDR'],
+  [3, 4, 'DRRRRDDLULDLULDLLLUURDRUULLUUUURDDRUURRDLDRRUURRDLDRDDLL'],
+  [3, 6, 'UUUULURRRRRULLLLLLLDRDLDRRDDDLUULDDDRRRRRRRUUUULDDLLURUL'],
+  [0, 8, 'UUUUUUUURDDDRUUURRRRRDLLDRRDLLLUULDDDLLDRRRURRRDDDDLUUULDLLLLDRR'],
+  [5, 7, 'RDRUULURULURUUULDDLUULLDRDDRDLLUULLURULLDDDDRURDDRRRDLDLULLDRDLL'],
+  [7, 1, 'DDDLLDDRURDDDLULDLLLLLUUUURDDDRRRULLUUULLUUURRRDLLDRRDDDRUUUUURD'],
+]
+for (const [startX, startY, route] of extraRoutes) {
+  const solution = [{x: startX, y: startY}]
+  for (const move of route) {
+    const last = solution[solution.length - 1]
+    solution.push({x: last.x + Number(move === 'R') - Number(move === 'L'), y: last.y + Number(move === 'D') - Number(move === 'U')})
+  }
+  const id = LEVELS.length + 1
+  LEVELS.push({id, theme: 'cream', start: solution[0], end: solution[solution.length - 1],
+    cells: rats(solution), solution, timeLimit: 120 + (id - 16) * 3, hintLimit: 2,
+    tip: id % 5 === 0 ? '带上新伙伴，回洞后有机会入伙' : '先收齐宝物，再带着战利品回洞'})
+}
 
 export const LEVEL_COUNT = LEVELS.length
 

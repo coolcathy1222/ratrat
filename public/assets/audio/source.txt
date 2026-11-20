@@ -1,0 +1,5 @@
+field-burst.wav
+Whistle and Explosion Single_Firework — Rudmer_Rotteveel (Freesound)
+https://freesound.org/people/Rudmer_Rotteveel/sounds/336008/
+CC0 1.0 — https://creativecommons.org/publicdomain/zero/1.0/
+Edited for the game: isolated burst, mono mix, EQ, compression and tail fade.

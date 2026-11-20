@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { rarer, rollSpecies } from './drop'
 import { LEVELS } from './levels'
 import { defaultSave, normalizeSave, noteClear } from './progress'
 import { extendStroke, hintNext, isStuck, isWon, minClearSeconds, ratCount, step, undoOne } from './rules'
@@ -20,7 +19,7 @@ function playSolution(levelId: number) {
 
 describe('levels', () => {
   it('accepts every authored route', () => {
-    expect(LEVELS).toHaveLength(15)
+    expect(LEVELS).toHaveLength(30)
     for (const level of LEVELS) {
       const xs = level.cells.map((cell) => cell.x)
       const ys = level.cells.map((cell) => cell.y)
@@ -193,14 +192,6 @@ describe('levels', () => {
 })
 
 describe('drops and progress', () => {
-  it('rolls within the table and keeps the rarer rat', () => {
-    expect(rollSpecies(false, () => 0)).toBeNull()
-    expect(rollSpecies(false, () => 0.85)).toBe('cream')
-    expect(rollSpecies(true, () => 0.99)).toBe('crown')
-    expect(rarer('cream', 'gold')).toBe('gold')
-    expect(rarer('crown', 'gold')).toBe('crown')
-  })
-
   it('resets the daily count on a new Shanghai day and advances the level', () => {
     const save = defaultSave('2026-11-16')
     save.dailyRats = 12
@@ -211,14 +202,14 @@ describe('drops and progress', () => {
     expect(next.dailyDate).toBe('2026-11-17')
     noteClear(next, 1)
     expect(next.level).toBe(2)
-    noteClear(next, 15)
+    noteClear(next, 30)
     expect(next.finished).toBe(true)
-    expect(next.level).toBe(15)
+    expect(next.level).toBe(30)
     const oldFinish = defaultSave('2026-11-16')
-    oldFinish.level = 5
+    oldFinish.level = 25
     oldFinish.finished = true
     const migrated = normalizeSave(oldFinish, '2026-11-16')
     expect(migrated.finished).toBe(false)
-    expect(migrated.level).toBe(6)
+    expect(migrated.level).toBe(26)
   })
 })

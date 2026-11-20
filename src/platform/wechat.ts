@@ -10,6 +10,10 @@ interface WxAd {
 }
 
 interface WxApi {
+  getFileSystemManager(): {
+    readFile(options: { filePath: string; success(result: { data: ArrayBuffer }): void; fail(error: unknown): void }): void
+  }
+  createWebAudioContext?: () => AudioContext
   createImage?: () => HTMLImageElement
   createCanvas?: () => HTMLCanvasElement
   createRewardedVideoAd?: (opts: { adUnitId: string }) => WxAd

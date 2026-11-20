@@ -1,6 +1,6 @@
 import type { CellPos, LevelDef } from './levels'
 
-export type StepError = 'not-start' | 'diagonal' | 'far' | 'crate' | 'hole' | 'repeat'
+export type StepError = 'not-start' | 'diagonal' | 'far' | 'crate' | 'hole' | 'repeat' | 'early-end'
 
 export type StepResult = { ok: true; path: CellPos[] } | { ok: false; error: StepError }
 
@@ -60,6 +60,7 @@ export function step(level: LevelDef, path: CellPos[], next: CellPos): StepResul
   if (kind === 'crate') return { ok: false, error: 'crate' }
   if (kind !== 'rat') return { ok: false, error: 'hole' }
   if (path.some((cell) => sameCell(cell, next))) return { ok: false, error: 'repeat' }
+  if (sameCell(next, level.end) && path.length + 1 < index.ratCount) return { ok: false, error: 'early-end' }
   return { ok: true, path: [...path, { x: next.x, y: next.y }] }
 }
 

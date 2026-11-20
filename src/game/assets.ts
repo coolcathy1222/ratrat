@@ -4,26 +4,34 @@ export type Sprite = CanvasImageSource & { width: number; height: number }
 
 export type MakeSprite = () => HTMLImageElement
 
+const SCENES = {supplies:'supplies.png', suppliesPlain:'supplies-plain.png', butterfly:'butterfly.png', assembly:'assembly.png', team:'team.jpg', lookout:'lookout.png', snack:'snack.png', nap:'nap.png'} as const
+
 export class AssetBook {
   calm: Partial<Record<Species, Sprite>> = {}
-  angry: Partial<Record<Species, Sprite>> = {}
   shadow: Partial<Record<Species, Sprite>> = {}
   hole: Sprite | undefined
+  scenes: Partial<Record<keyof typeof SCENES, Sprite>> = {}
+  progress = 0
+  readonly openedAt = performance.now()
   ready = false
 
   async load(base: string, make: MakeSprite): Promise<void> {
     const jobs: Promise<void>[] = []
+    for (const name of Object.keys(SCENES) as Array<keyof typeof SCENES>) {
+      jobs.push(this.loadSrc(`${base}/squad/${SCENES[name]}`, make).then(image => { this.scenes[name] = image }))
+    }
     for (const id of SPECIES_IDS) {
-      for (const kind of ['calm', 'angry', 'shadow'] as const) {
-        jobs.push(this.loadOne(base, id, kind, make))
+      for (const kind of ['calm', 'shadow'] as const) {
+        jobs.push(this.loadOne(`${base}/crew`, id, kind, make))
       }
     }
     jobs.push(
-      this.loadSrc(`${base}/hole.png`, make).then((image) => {
+      this.loadSrc(`${base}/heads/hole.png`, make).then((image) => {
         if (image) this.hole = image
       }),
     )
-    await Promise.all(jobs)
+    let loaded = 0
+    await Promise.all(jobs.map(job => job.then(() => { this.progress = ++loaded / jobs.length })))
     this.ready = true
   }
 
@@ -36,7 +44,7 @@ export class AssetBook {
     })
   }
 
-  private loadOne(base: string, id: Species, kind: 'calm' | 'angry' | 'shadow', make: MakeSprite): Promise<void> {
+  private loadOne(base: string, id: Species, kind: 'calm' | 'shadow', make: MakeSprite): Promise<void> {
     return new Promise((resolve) => {
       const image = make()
       image.onload = () => {

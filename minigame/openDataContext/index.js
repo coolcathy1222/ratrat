@@ -5,22 +5,22 @@ function paint(rows, width) {
   const w = width || shared.width || 600
   const h = shared.height || 680
   ctx.clearRect(0, 0, w, h)
-  ctx.fillStyle = '#6B3A2A'
+  ctx.fillStyle = '#353E50'
   ctx.font = '28px sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   if (!rows.length) {
-    ctx.fillStyle = '#8A5644'
+    ctx.fillStyle = '#73665B'
     ctx.textAlign = 'center'
     ctx.fillText('还没有好友成绩', w / 2, 48)
     return
   }
   rows.forEach((row, index) => {
     const y = 36 + index * 72
-    ctx.fillStyle = '#FFF8F1'
+    ctx.fillStyle = '#FFF7E7'
     round(16, y - 26, w - 32, 60, 16)
     ctx.fill()
-    ctx.fillStyle = '#6B3A2A'
+    ctx.fillStyle = '#353E50'
     ctx.textAlign = 'left'
     ctx.fillText(`${index + 1}  ${row.name}`, 36, y)
     ctx.textAlign = 'right'

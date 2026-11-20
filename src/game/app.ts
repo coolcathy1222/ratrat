@@ -1,13 +1,13 @@
-import { rollSpecies, rarer } from '../core/drop'
+import { planHeist, bankHeist, type Haul, type Heist } from '../core/heist'
 import { LEVEL_COUNT, levelById, type CellPos, type LevelDef } from '../core/levels'
-import type { Species } from '../core/species'
 import { noteClear, shanghaiDate, type SaveData } from '../core/progress'
 import { extendStroke, hintNext, isStuck, isWon, minClearSeconds, ratCount, undoOne } from '../core/rules'
 import type { Platform, RewardSlot } from '../platform/types'
 import { AssetBook, type MakeSprite } from './assets'
 import { Sfx } from './audio'
 import { PLAY_AREA, STAGE, boardGeom, cellRect } from './geom'
-import { celebrateMs, render, spawnSpan, type Frame, type Hot } from './render'
+import { burstBetween, celebrateMs } from './celebration'
+import { render, spawnSpan, type Frame, type Hot } from './render'
 import { loadSave, storeSave } from './save'
 
 interface RewardPrompt {
@@ -19,6 +19,8 @@ interface RewardPrompt {
 
 export interface AppOptions {
   assetBase: string
+  createAudioContext?: () => AudioContext
+  readAudioFile: (path: string) => Promise<ArrayBuffer>
   makeImage: MakeSprite
 }
 
@@ -26,7 +28,7 @@ export class App {
   private readonly canvas: HTMLCanvasElement
   private readonly platform: Platform
   private readonly assets = new AssetBook()
-  private readonly sfx = new Sfx()
+  private readonly sfx: Sfx
   private save: SaveData
   private hots: Hot[] = []
   private screen: Frame['screen'] = 'home'
@@ -53,8 +55,8 @@ export class App {
   private undoUsed = false
   private stuckOffered = false
   private extraUsed = false
-  private dropBoosted = false
-  private dropSpecies: Species | null = null
+  private plan!: Heist
+  private haul: Haul | null = null
   private dropReady = false
   private dropAt = 0
   private won = false
@@ -79,6 +81,7 @@ export class App {
     this.canvas = canvas
     this.platform = platform
     this.save = loadSave(platform)
+    this.sfx = new Sfx(() => options.readAudioFile(`${options.assetBase}/audio/field-burst.wav`), options.createAudioContext)
     this.sfx.setEnabled(this.save.sound)
     void this.assets.load(options.assetBase, options.makeImage)
   }
@@ -117,6 +120,7 @@ export class App {
 
   setHidden(hidden: boolean): void {
     this.hidden = hidden
+    this.sfx.setVisible(!hidden)
     if (hidden) this.pause()
     else this.resumeIfClear()
   }
@@ -137,6 +141,7 @@ export class App {
   }
 
   private tick(now: number): void {
+    const previousFrame = this.lastFrame
     const dt = Math.min(0.05, (now - this.lastFrame) / 1000 || 0)
     this.lastFrame = now
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 3.2)
@@ -144,8 +149,12 @@ export class App {
     if (this.screen === 'play' && this.won && !this.dropReady && now - this.winAt > celebrateMs(this.path.length)) {
       this.dropReady = true
       this.dropAt = now
-      this.sfx.fanfare()
+      this.sfx.cheer()
       this.pause()
+    }
+    if (this.screen === 'play' && this.dropReady && !this.hidden &&
+        now - previousFrame < 250 && burstBetween(previousFrame - this.dropAt, now - this.dropAt)) {
+      this.sfx.firework()
     }
     if (this.screen === 'play' && !this.won && this.timeLimit != null && !this.blocking()) {
       const left = this.remaining()
@@ -222,6 +231,7 @@ export class App {
 
   private startLevel(id: number): void {
     this.level = levelById(id)
+    this.plan = planHeist(this.level, this.save.dex)
     this.screen = 'play'
     this.path = []
     this.hintCell = null
@@ -229,8 +239,7 @@ export class App {
     this.undoUsed = false
     this.stuckOffered = false
     this.extraUsed = false
-    this.dropBoosted = false
-    this.dropSpecies = null
+    this.haul = null
     this.dropReady = false
     this.dropAt = 0
     this.won = false
@@ -259,7 +268,7 @@ export class App {
     this.winAt = 0
     this.dropReady = false
     this.dropAt = 0
-    this.dropSpecies = null
+    this.haul = null
     this.drawing = false
     this.spawnedAt = performance.now()
     this.pops = {}
@@ -311,10 +320,7 @@ export class App {
       this.save.dailyRats += count
       this.platform.submitScore(this.save.totalRats, this.save.dailyRats, this.save.dailyDate)
     }
-    const species = rollSpecies(false)
-    this.dropSpecies = species
-    if (species) this.save.dex[species] += 1
-    this.dropBoosted = false
+    this.haul = bankHeist(this.plan, this.save)
     noteClear(this.save, this.level.id)
     this.persist()
   }
@@ -363,7 +369,8 @@ export class App {
         this.lastError = key
         this.shake = 1
         this.sfx.error()
-        if (result.error === 'not-start') this.toast('从起点开始')
+        if (result.error === 'not-start') this.toast('从自己的鼠鼠开始')
+        if (result.error === 'early-end') this.toast('还有宝物没拿，最后再回洞')
       }
     }
   }
@@ -454,7 +461,7 @@ export class App {
       return
     }
     if (id === 'start') {
-      this.startLevel(this.save.level)
+      this.startLevel(this.save.finished ? 1 : this.save.level)
       return
     }
     if (id === 'rank:total' || id === 'tab:total') {
@@ -465,6 +472,7 @@ export class App {
       this.openRank('daily')
       return
     }
+    if (id === 'warehouse') { this.screen = 'warehouse'; return }
     if (id === 'dex') {
       this.screen = 'dex'
       this.detail = null
@@ -507,15 +515,11 @@ export class App {
       this.resumeIfClear()
       return
     }
-    if (id === 'drop:boost') {
-      void this.askBoost()
-      return
-    }
     if (id === 'drop:next') {
       const next = this.level.id < LEVEL_COUNT ? this.level.id + 1 : 0
       this.dropReady = false
       this.dropAt = 0
-      this.dropSpecies = null
+      this.haul = null
       if (next) this.startLevel(next)
       else this.goHome()
       return
@@ -557,6 +561,14 @@ export class App {
       this.toast('这条线走偏了，重置后才能提示')
       return
     }
+    if (this.save.lenses > 0) {
+      this.save.lenses--
+      this.hintCell = next
+      this.hintLeft--
+      this.persist()
+      this.toast('探路镜照亮了下一格')
+      return
+    }
     this.reward = { slot: 'hint', title: '看广告获得提示', confirm: '观看', cell: next }
     this.pause()
   }
@@ -579,16 +591,6 @@ export class App {
     this.pause()
   }
 
-  private async askBoost(): Promise<void> {
-    if (this.dropBoosted) return
-    this.reward = {
-      slot: 'rare',
-      title: this.dropSpecies ? '看广告提高稀有率' : '看广告碰碰运气',
-      confirm: '观看',
-    }
-    this.pause()
-  }
-
   private async confirmReward(): Promise<void> {
     const reward = this.reward
     if (!reward || this.busy) return
@@ -608,7 +610,7 @@ export class App {
     if (reward.slot === 'hint' && reward.cell) {
       this.hintLeft -= 1
       this.hintCell = reward.cell
-      this.toast('下一只亮出来了')
+      this.toast('下一格亮出来了')
     } else if (reward.slot === 'undo') {
       this.path = undoOne(this.path)
       this.undoUsed = true
@@ -620,30 +622,12 @@ export class App {
       this.extraUsed = true
       this.timeoutOpen = false
       this.lastTick = -1
-    } else if (reward.slot === 'rare') {
-      const rolled = rollSpecies(true)
-      if (this.dropSpecies && rolled) {
-        const next = rarer(this.dropSpecies, rolled)
-        if (next !== this.dropSpecies) {
-          this.save.dex[this.dropSpecies] = Math.max(0, this.save.dex[this.dropSpecies] - 1)
-          this.save.dex[next] += 1
-          this.dropSpecies = next
-          this.persist()
-        }
-      } else if (!this.dropSpecies && rolled) {
-        this.save.dex[rolled] += 1
-        this.dropSpecies = rolled
-        this.persist()
-      } else if (!rolled) {
-        this.toast(this.dropSpecies ? '还是这只' : '还是没遇到')
-      }
-      this.dropBoosted = true
     }
     this.resumeIfClear()
   }
 
   private async doShare(): Promise<void> {
-    const text = `我在捉鼠鼠里连成了${this.save.totalRats}只，来一笔连完。`
+    const text = `我在《鼠鼠大作战》走过了 ${this.save.totalRats} 格，来和田野小队一起收集补给！`
     const result = await this.platform.share(text)
     if (result === 'copied') this.toast('分享文字已复制')
     else if (result === 'shared') this.toast('已准备好分享')
@@ -655,7 +639,7 @@ export class App {
     if (!ctx) return
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
     ctx.clearRect(0, 0, this.cssW, this.cssH)
-    ctx.fillStyle = '#2A1814'
+    ctx.fillStyle = '#EDDDC5'
     ctx.fillRect(0, 0, this.cssW, this.cssH)
     ctx.save()
     ctx.translate(this.offsetX, this.offsetY)
@@ -688,8 +672,8 @@ export class App {
               winAt: this.winAt,
               showDrop: this.dropReady,
               dropAt: this.dropAt,
-              dropSpecies: this.dropSpecies,
-              dropBoosted: this.dropBoosted,
+              plan: this.plan,
+              haul: this.haul,
               spawnAt: this.spawnedAt,
               pops: this.pops,
             }

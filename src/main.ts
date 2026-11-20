@@ -6,7 +6,12 @@ if (!(found instanceof HTMLCanvasElement)) throw new Error('missing canvas')
 const canvas: HTMLCanvasElement = found
 
 const app = new App(canvas, createWebPlatform(), {
-  assetBase: './assets/heads',
+  assetBase: './assets',
+  async readAudioFile(path) {
+    const response = await fetch(path)
+    if (!response.ok) throw new Error(`Audio request failed: ${response.status}`)
+    return response.arrayBuffer()
+  },
   makeImage: () => new Image(),
 })
 

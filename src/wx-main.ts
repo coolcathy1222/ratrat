@@ -9,7 +9,11 @@ if (!wx?.createCanvas || !wx.getSystemInfoSync) {
 const info = wx.getSystemInfoSync()
 const canvas = wx.createCanvas()
 const app = new App(canvas, createWechatPlatform(), {
-  assetBase: 'assets/heads',
+  assetBase: 'assets',
+  readAudioFile: filePath => new Promise((resolve, reject) => {
+    wx.getFileSystemManager().readFile({filePath, success: result => resolve(result.data), fail: reject})
+  }),
+  createAudioContext: wx.createWebAudioContext?.bind(wx),
   makeImage: () => wx.createImage?.() ?? new Image(),
 })
 

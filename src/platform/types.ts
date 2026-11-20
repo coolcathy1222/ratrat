@@ -1,4 +1,4 @@
-export type RewardSlot = 'hint' | 'undo' | 'time' | 'rare'
+export type RewardSlot = 'hint' | 'undo' | 'time'
 
 export type ShareResult = 'shared' | 'copied' | 'cancelled'
 

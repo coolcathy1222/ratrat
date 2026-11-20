@@ -1,5 +1,5 @@
 {
-  "description": "捉鼠鼠",
+  "description": "鼠鼠大作战",
   "packOptions": {
     "ignore": [],
     "include": []
@@ -15,6 +15,6 @@
   "compileType": "game",
   "libVersion": "3.5.0",
   "appid": "touristappid",
-  "projectname": "ratrat",
+  "projectname": "鼠鼠大作战",
   "condition": {}
 }

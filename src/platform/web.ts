@@ -31,7 +31,7 @@ export function createWebPlatform(): Platform {
     async share(text): Promise<ShareResult> {
       if (typeof navigator !== 'undefined' && navigator.share) {
         try {
-          await navigator.share({ title: '捉鼠鼠', text })
+          await navigator.share({ title: '鼠鼠大作战', text })
           return 'shared'
         } catch {
           return 'cancelled'

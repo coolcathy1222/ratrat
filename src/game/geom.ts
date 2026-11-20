@@ -17,7 +17,7 @@ export interface BoardGeom {
 }
 
 export const STAGE = { w: 720, h: 1280 }
-export const PLAY_AREA: Rect = { x: 36, y: 168, w: 648, h: 800 }
+export const PLAY_AREA: Rect = { x: 42, y: 240, w: 636, h: 656 }
 
 export function boardGeom(level: LevelDef, area: Rect, maxCell = 156): BoardGeom {
   let minX = Infinity
@@ -43,7 +43,7 @@ export function boardGeom(level: LevelDef, area: Rect, maxCell = 156): BoardGeom
     minX,
     minY,
     originX: area.x + (area.w - gridW) / 2,
-    originY: area.y + Math.min(28, spareY / 2),
+    originY: area.y + spareY / 2,
   }
 }
 
