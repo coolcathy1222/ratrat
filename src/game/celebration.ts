@@ -1,8 +1,8 @@
 import { STAGE } from './geom'
 
-const TILE_MS = 760
+const TILE_MS = 1100
 export function waveStep(count: number): number {
-  return Math.min(132, 3350 / Math.max(1, count - 1))
+  return Math.min(165, 4300 / Math.max(1, count - 1))
 }
 
 export function celebrateMs(count: number): number {
@@ -85,11 +85,11 @@ export function tileSparks(ctx: CanvasRenderingContext2D, x: number, y: number, 
 
 const shells = [
   {x: 172, y: 154, delay: 0, colors: ['#FF4B71', '#FF963B', '#FFE45C'], drift: 56},
-  {x: 572, y: 100, delay: .28, colors: ['#7858FF', '#F65BD5', '#60DFFF'], drift: -62},
-  {x: 69, y: 224, delay: 1.72, colors: ['#19CFC2', '#A0EE4F', '#FFEB80'], drift: 35},
-  {x: 405, y: 109, delay: 3.05, colors: ['#FC6258', '#5AD7FF', '#CC71FF'], drift: -35},
-  {x: 650, y: 206, delay: 3.44, colors: ['#537DFF', '#15D4DE', '#FFA94B'], drift: -45},
-  {x: 242, y: 90, delay: 4.68, colors: ['#87E940', '#31C4FF', '#BC6BFF'], drift: 32},
+  {x: 572, y: 100, delay: 1.02, colors: ['#7858FF', '#F65BD5', '#60DFFF'], drift: -62},
+  {x: 69, y: 224, delay: 2.08, colors: ['#19CFC2', '#A0EE4F', '#FFEB80'], drift: 35},
+  {x: 405, y: 109, delay: 3.22, colors: ['#FC6258', '#5AD7FF', '#CC71FF'], drift: -35},
+  {x: 650, y: 206, delay: 4.34, colors: ['#537DFF', '#15D4DE', '#FFA94B'], drift: -45},
+  {x: 242, y: 90, delay: 5.55, colors: ['#87E940', '#31C4FF', '#BC6BFF'], drift: 32},
 ].map((shell, shellIndex) => {
   let seed = 91 + shellIndex
   const next = () => {
@@ -112,11 +112,11 @@ const shells = [
 })
 
 const SHELL_CYCLE = 6.8
-const ASCENT = .72
+export const ASCENT = .72
 
-export function burstBetween(previousMs: number, currentMs: number): boolean {
+export function shellCueBetween(previousMs: number, currentMs: number, cue: 'launch' | 'burst'): boolean {
   return shells.some(({delay}) => {
-    const first = delay + ASCENT
+    const first = delay + (cue === 'burst' ? ASCENT : 0)
     return currentMs / 1000 >= first &&
       Math.floor((currentMs / 1000 - first) / SHELL_CYCLE) >
       Math.floor((previousMs / 1000 - first) / SHELL_CYCLE)

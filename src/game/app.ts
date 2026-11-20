@@ -6,7 +6,7 @@ import type { Platform, RewardSlot } from '../platform/types'
 import { AssetBook, type MakeSprite } from './assets'
 import { Sfx } from './audio'
 import { PLAY_AREA, STAGE, boardGeom, cellRect } from './geom'
-import { burstBetween, celebrateMs } from './celebration'
+import { ASCENT, celebrateMs, shellCueBetween } from './celebration'
 import { render, spawnSpan, type Frame, type Hot } from './render'
 import { loadSave, storeSave } from './save'
 
@@ -152,9 +152,11 @@ export class App {
       this.sfx.cheer()
       this.pause()
     }
-    if (this.screen === 'play' && this.dropReady && !this.hidden &&
-        now - previousFrame < 250 && burstBetween(previousFrame - this.dropAt, now - this.dropAt)) {
-      this.sfx.firework()
+    if (this.screen === 'play' && this.dropReady && !this.hidden && now - previousFrame < 250) {
+      const previous = previousFrame - this.dropAt
+      const current = now - this.dropAt
+      if (shellCueBetween(previous, current, 'launch')) this.sfx.launch(ASCENT)
+      if (shellCueBetween(previous, current, 'burst')) this.sfx.firework()
     }
     if (this.screen === 'play' && !this.won && this.timeLimit != null && !this.blocking()) {
       const left = this.remaining()

@@ -132,6 +132,29 @@ export class Sfx {
     }
   }
 
+  launch(duration: number): void {
+    const ctx = this.ctx
+    if (!ctx || !this.master || !this.visible || !this.enabled) return
+    const t = ctx.currentTime
+    const end = t + duration
+    const pitch = 630 + Math.random() * 120
+    const whistle = ctx.createOscillator()
+    whistle.type = 'sine'
+    whistle.frequency.setValueAtTime(pitch, t)
+    whistle.frequency.exponentialRampToValueAtTime(pitch * 2.1, t + duration * .54)
+    whistle.frequency.exponentialRampToValueAtTime(pitch * 3.25, end)
+    const amp = ctx.createGain()
+    amp.gain.setValueAtTime(.0001, t)
+    amp.gain.exponentialRampToValueAtTime(.079, t + duration * .17)
+    amp.gain.exponentialRampToValueAtTime(.041, end - .09)
+    amp.gain.exponentialRampToValueAtTime(.0001, end - .014)
+    whistle.connect(amp)
+    amp.connect(this.master)
+    this.rustle(t, duration * .85, 3200, .19)
+    whistle.start(t)
+    whistle.stop(end)
+  }
+
   firework(): void {
     const ctx = this.ctx
     if (!ctx || !this.master || !this.visible || !this.enabled) return

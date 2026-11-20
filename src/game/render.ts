@@ -315,13 +315,30 @@ function drawBoard(
   const ctx = frame.ctx
   const geom = boardGeom(level, area)
   const ox = Math.sin(opts.shake * 24) * opts.shake * 10
-  const visited = new Set(path.map((cell) => `${cell.x},${cell.y}`))
   const order = new Map(path.map((cell, index) => [`${cell.x},${cell.y}`, index]))
   const bursts: Array<{ x: number; y: number; phase: number; seed: number }> = []
   const step = waveStep(path.length)
   const ready = path.filter((cell) => appearScale(frame.now, opts.spawnAt, spawnDelay(level, cell)) >= 0.98)
   ctx.save()
   ctx.translate(ox, 0)
+  if (ready.length > 1) {
+    const centers = ready.map((cell) => cellCenter(geom, cell))
+    const width = Math.max(18, geom.cell * 0.22)
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.save()
+    ctx.globalAlpha = 1
+    ctx.shadowColor = 'rgba(120, 72, 48, 0.2)'
+    ctx.shadowBlur = 3
+    traceRibbon(ctx, centers)
+    ctx.strokeStyle = '#FFFADE'
+    ctx.lineWidth = width
+    ctx.stroke()
+    ctx.strokeStyle = '#B9664C'
+    ctx.lineWidth = width * .48
+    ctx.stroke()
+    ctx.restore()
+  }
   for (const cell of level.cells) {
     const born = appearScale(frame.now, opts.spawnAt, spawnDelay(level, cell))
     if (born <= 0) continue
@@ -352,11 +369,19 @@ function drawBoard(
     const isStart = cell.x === level.start.x && cell.y === level.start.y
     const isEnd = cell.x === level.end.x && cell.y === level.end.y
     const revealed = opts.won && at != null && frame.now >= at
-    ctx.fillStyle = revealed ? (phase >= 0 ? '#DBECA6' : '#EEF1CF') : isStart ? '#E7C79B' : isEnd ? '#F8DF93' : visited.has(key) ? '#ECE0BE' : paper
+    ctx.fillStyle = revealed ? (phase >= 0 ? '#DBECA6' : '#EEF1CF') : isStart ? '#E7C79B' : isEnd ? '#F8DF93' : index != null ? '#FFF1C9' : paper
     ctx.fill()
     ctx.shadowColor = 'transparent'
     ctx.clip()
-    stitches(ctx, {x: rect.x + 4, y: rect.y + 4, w: rect.w - 8, h: rect.h - 8}, rect.w * .18, '#D2CEAD')
+    if (index != null) {
+      const inset = 2.5
+      roundRect(ctx, rect.x + inset, rect.y + inset, rect.w - inset * 2, rect.h - inset * 2, rect.w * .19)
+      ctx.strokeStyle = revealed ? '#82A254' : '#C77842'
+      ctx.lineWidth = Math.max(2, rect.w * .047)
+      ctx.stroke()
+    } else {
+      stitches(ctx, {x: rect.x + 4, y: rect.y + 4, w: rect.w - 8, h: rect.h - 8}, rect.w * .18, '#D2CEAD')
+    }
     if (cell.kind === 'crate') {
       ctx.restore()
       drawRock(ctx, rect)
@@ -372,31 +397,12 @@ function drawBoard(
       if (frame.assets.hole) paintHead(ctx, frame.assets.hole, ink, rect.x+4,rect.y+4,rect.w-8,rect.h-8)
       else drawHole(ctx, rect)
     } else if (pickup) {
-      ctx.globalAlpha *= revealed ? 1 : visited.has(key) ? .48 : 1
       const atlas = revealed ? frame.assets.scenes.supplies : frame.assets.scenes.suppliesPlain
       lootArt(ctx, atlas, pickup.kind === 'good' ? pickup.id : 'lens', cx, cy, rect.w * .88)
     }
     ctx.restore()
     ctx.restore()
     if (phase >= 0) bursts.push({ x: cx, y: cy - lift * rect.h * .2, phase, seed })
-  }
-  if (ready.length > 1) {
-    const centers = ready.map((cell) => cellCenter(geom, cell))
-    const width = Math.max(18, geom.cell * 0.22)
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    ctx.save()
-    ctx.globalAlpha = opts.won ? .24 : 1
-    ctx.shadowColor = 'rgba(120, 72, 48, 0.2)'
-    ctx.shadowBlur = 8
-    traceRibbon(ctx, centers)
-    ctx.strokeStyle = '#FFFADE'
-    ctx.lineWidth = width
-    ctx.stroke()
-    ctx.strokeStyle = '#B9664C'
-    ctx.lineWidth = width * .48
-    ctx.stroke()
-    ctx.restore()
   }
   for (const burst of bursts) tileSparks(ctx, burst.x, burst.y, geom.cell, burst.phase, burst.seed, opts.won)
   if (hint) {
