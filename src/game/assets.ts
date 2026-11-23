@@ -4,11 +4,12 @@ export type Sprite = CanvasImageSource & { width: number; height: number }
 
 export type MakeSprite = () => HTMLImageElement
 
-const SCENES = {supplies:'supplies.png', suppliesPlain:'supplies-plain.png', butterfly:'butterfly.png', assembly:'assembly.png', team:'team.jpg', lookout:'lookout.png', snack:'snack.png', nap:'nap.png'} as const
+const SCENES = {cottage:'cottage.jpg',supplies:'supplies.png', suppliesPlain:'supplies-plain.png', butterfly:'butterfly.png', assembly:'assembly.png', team:'team.jpg', lookout:'lookout.png', snack:'snack.png', nap:'nap.png'} as const
 
 export class AssetBook {
   calm: Partial<Record<Species, Sprite>> = {}
   shadow: Partial<Record<Species, Sprite>> = {}
+  creamEmpty: Sprite | undefined
   hole: Sprite | undefined
   scenes: Partial<Record<keyof typeof SCENES, Sprite>> = {}
   progress = 0
@@ -26,6 +27,7 @@ export class AssetBook {
       }
     }
     jobs.push(
+      this.loadSrc(`${base}/crew/cream-empty.png`, make).then(image => { this.creamEmpty = image }),
       this.loadSrc(`${base}/heads/hole.png`, make).then((image) => {
         if (image) this.hole = image
       }),

@@ -1,8 +1,9 @@
-import { GOOD_IDS, type Good } from './heist'
+import { GOOD_IDS, type Relic, type Good } from './heist'
 import { LEVEL_COUNT } from './levels'
 import { SPECIES_IDS, type Species } from './species'
 
 export interface SaveData {
+  relics: Record<Relic, number>
   stock: Partial<Record<Good, number>>
   lenses: number
   sound: boolean
@@ -30,6 +31,7 @@ export function defaultSave(today = shanghaiDate()): SaveData {
     finished: false,
     dex: {cream: 1, gray: 0, calico: 0, scarf: 0, gold: 0, crown: 0},
     stock: {},
+    relics: {ranunculus: 0, pearl: 0},
     lenses: 0,
     totalRats: 0,
     dailyRats: 0,
@@ -66,6 +68,8 @@ export function normalizeSave(raw: unknown, today = shanghaiDate()): SaveData {
   }
   save.dex.cream = Math.max(1, save.dex.cream)
   const quantity = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 0
+  save.relics.ranunculus = quantity(data.relics?.ranunculus)
+  save.relics.pearl = quantity(data.relics?.pearl)
   save.lenses = quantity(data.lenses)
   for (const id of GOOD_IDS) save.stock[id] = quantity(data.stock?.[id])
   return save

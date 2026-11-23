@@ -19,7 +19,7 @@ function playSolution(levelId: number) {
 
 describe('levels', () => {
   it('accepts every authored route', () => {
-    expect(LEVELS).toHaveLength(30)
+    expect(LEVELS).toHaveLength(45)
     for (const level of LEVELS) {
       const xs = level.cells.map((cell) => cell.x)
       const ys = level.cells.map((cell) => cell.y)
@@ -202,14 +202,14 @@ describe('drops and progress', () => {
     expect(next.dailyDate).toBe('2026-11-17')
     noteClear(next, 1)
     expect(next.level).toBe(2)
-    noteClear(next, 30)
+    noteClear(next, 45)
     expect(next.finished).toBe(true)
-    expect(next.level).toBe(30)
+    expect(next.level).toBe(45)
     const oldFinish = defaultSave('2026-11-16')
-    oldFinish.level = 25
+    oldFinish.level = 35
     oldFinish.finished = true
     const migrated = normalizeSave(oldFinish, '2026-11-16')
     expect(migrated.finished).toBe(false)
-    expect(migrated.level).toBe(26)
+    expect(migrated.level).toBe(36)
   })
 })

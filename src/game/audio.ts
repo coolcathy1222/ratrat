@@ -1,4 +1,6 @@
-const SCALE = [261.63, 293.66, 329.63, 349.23, 392, 440, 493.88, 523.25]
+import { duets } from './duets'
+import { FLIGHT_MS, STAGGER_MS } from './celebration'
+import { levelPhrase, phraseIndex, recitalMs, recitalPlan } from './mozart'
 
 // Original eight-bar swing miniature. Zero means a rest in the lead line.
 const BARS = [
@@ -24,7 +26,7 @@ export class Sfx {
   private burstSample: AudioBuffer | null = null
   private loadingBurst = false
   private nextBurstRetry = 0
-  constructor(private readonly readBurst: () => Promise<ArrayBuffer>, private readonly createContext?: () => AudioContext) {}
+  constructor(private readonly readClip: (file: string) => Promise<ArrayBuffer>, private readonly createContext?: () => AudioContext) {}
 
   private musicGain: GainNode | null = null
   private musicTimer = 0
@@ -46,7 +48,7 @@ export class Sfx {
     const audible = this.enabled && this.visible
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(audible ? .78 : 0, this.ctx.currentTime, .012)
     if (audible) this.startMusic()
-    else this.stopMusic()
+    else { this.stopMusic(); this.stopFireworks() }
   }
 
   unlock(): void {
@@ -70,24 +72,115 @@ export class Sfx {
     this.tone(540, 0.045, 'sine', 0.09)
   }
 
-  connect(index: number, delay = 0): void {
-    this.piano(SCALE[index % SCALE.length], 0.42, 0.24, delay)
+  connect(level: number, index: number, delay = 0): void {
+    const {notes,bpm} = levelPhrase(level)
+    const [pitch,beats] = notes[index % notes.length]
+    this.piano(midiToHz(pitch), Math.min(.72,.24+beats*60/bpm), .21, delay)
   }
 
   error(): void {
     this.tone(168, 0.12, 'square', 0.07)
   }
 
-  win(): void {
-    this.piano(523.25, 0.2, 0.22, 0)
-    this.piano(659.25, 0.22, 0.24, 0.1)
-    this.piano(783.99, 0.4, 0.28, 0.2)
+  private chirp(low: number, high: number, duration: number, peak: number, delay = 0) {
+    const ctx = this.ctx
+    if (!ctx || !this.master || !this.visible || !this.enabled) return
+    const t = ctx.currentTime+delay
+    const osc = ctx.createOscillator()
+    const amp = ctx.createGain()
+    osc.frequency.setValueAtTime(low,t)
+    osc.frequency.exponentialRampToValueAtTime(high,t+duration*.65)
+    amp.gain.setValueAtTime(.0001,t)
+    amp.gain.exponentialRampToValueAtTime(peak,t+.009)
+    amp.gain.exponentialRampToValueAtTime(.0001,t+duration)
+    osc.connect(amp).connect(this.master)
+    osc.start(t); osc.stop(t+duration+.01)
   }
 
-  cheer(): void {
+  tileBloom(index: number, stage: 'arrival' | 'victory' = 'victory') {
+    const pitch = [622,740,831,740][index%4]
+    this.chirp(pitch*.79,pitch,.095,stage === 'arrival' ? .42 : .58)
+  }
+
+  pocketPop(): void {
+    this.chirp(295,640,.16,.68)
+    this.chirp(575,895,.13,.52,.085)
+    for (const [i,pitch] of [698,784,880,784,659,523].entries()) {
+      const delay = (FLIGHT_MS+STAGGER_MS*i/5)/1000
+      this.chirp(pitch,pitch*.78,.24,.56,delay)
+      this.tone(pitch*2,.34,'sine',.18,delay+.024)
+    }
+  }
+
+  private duetClips = new Map<number,AudioBuffer>()
+  private loadingDuets = new Set<number>()
+
+  async prepareRecital(level: number): Promise<void> {
+    await Promise.all(recitalPlan(phraseIndex(level)).clips.map((index) => this.loadDuet(index)))
+  }
+
+  private async loadDuet(index: number): Promise<void> {
+    const ctx = this.ctx
+    if (!ctx || this.duetClips.has(index) || this.loadingDuets.has(index)) return
+    this.loadingDuets.add(index)
+    try {
+      const bytes = await this.readClip(`k448-phrase-${index+1}.mp3`)
+      const clip = await new Promise<AudioBuffer>((resolve,reject) => ctx.decodeAudioData(bytes,resolve,reject))
+      this.duetClips.set(index,clip)
+    } catch {
+      // A runtime without MP3 decoding plays the same two notated parts below.
+    } finally {
+      this.loadingDuets.delete(index)
+    }
+  }
+
+  cheer(level: number): void {
     const ctx = this.ctx
     if (!this.enabled || !this.visible || !ctx || !this.master) return
     const now = ctx.currentTime
+    const phrase = levelPhrase(level)
+    const beat = 60/phrase.bpm
+    const bus = ctx.createGain()
+    bus.connect(this.master)
+    this.recitalBus = bus
+    const plan = recitalPlan(phraseIndex(level))
+    let cursor = 0
+    plan.clips.forEach((clipIndex, order) => {
+      const span = plan.spans[order]
+      const clip = this.duetClips.get(clipIndex)
+      if (clip) {
+        const source = ctx.createBufferSource()
+        const amp = ctx.createGain()
+        const startAt = now + cursor * beat
+        const stopAt = startAt + span * beat
+        source.buffer = clip
+        amp.gain.setValueAtTime(1, startAt)
+        amp.gain.setValueAtTime(1, Math.max(startAt, stopAt - .04))
+        amp.gain.linearRampToValueAtTime(0, stopAt)
+        source.connect(amp).connect(bus)
+        source.start(startAt)
+        source.stop(stopAt + .02)
+        source.onended = () => { source.disconnect(); amp.disconnect() }
+      } else {
+        for (const part of duets[clipIndex].parts) {
+          for (const [start,duration,...chord] of part) {
+            const startBeat = start/96
+            if (startBeat >= span) continue
+            const heard = Math.min(duration/96, span - startBeat)
+            for (const pitch of chord) {
+              this.piano(midiToHz(pitch),heard*beat+.05,.13/Math.sqrt(chord.length),(cursor+startBeat)*beat,bus)
+            }
+          }
+        }
+      }
+      cursor += span
+    })
+    if (this.musicGain) {
+      const gain = this.musicGain.gain
+      gain.cancelScheduledValues(now)
+      gain.setTargetAtTime(.001,now,.04)
+      gain.setTargetAtTime(.2,now+recitalMs(phrase)/1000,.10)
+    }
     // A little crowd singing "woo!" with staggered voices and moving vowel formants.
     for (const [i, pitch] of [260, 322, 213, 380, 291, 238].entries()) {
       const t = now + i * .052
@@ -97,7 +190,7 @@ export class Sfx {
       voice.frequency.setValueAtTime(pitch * .85, t)
       voice.frequency.exponentialRampToValueAtTime(pitch * 1.65, t + .23)
       voice.frequency.exponentialRampToValueAtTime(pitch * 1.12, end)
-      for (const [start, finish, gain] of [[620, 400, .055], [1450, 910, .031]]) {
+      for (const [start, finish, gain] of [[620, 400, .029], [1450, 910, .017]]) {
         const vowel = ctx.createBiquadFilter()
         vowel.type = 'bandpass'
         vowel.Q.value = 2.6
@@ -107,21 +200,19 @@ export class Sfx {
         amp.gain.setValueAtTime(.0001, t)
         amp.gain.exponentialRampToValueAtTime(gain, t + .09)
         amp.gain.exponentialRampToValueAtTime(.0001, end)
-        voice.connect(vowel).connect(amp).connect(this.master)
+        voice.connect(vowel).connect(amp).connect(bus)
       }
       voice.start(t)
       voice.stop(end)
     }
-    for (let i = 0; i < 13; i++) {
-      this.rustle(now + .09 + i * .063 + Math.sin(i * 5) * .021, .062, 1350 + (i % 3) * 280, .13)
-    }
+
   }
 
   private async loadBurst(ctx: AudioContext): Promise<void> {
     if (this.loadingBurst || ctx.currentTime < this.nextBurstRetry) return
     this.loadingBurst = true
     try {
-      const bytes = await this.readBurst()
+      const bytes = await this.readClip('meadow-rocket.wav')
       this.burstSample = await new Promise<AudioBuffer>((resolve, reject) => {
         ctx.decodeAudioData(bytes, resolve, reject)
       })
@@ -132,45 +223,33 @@ export class Sfx {
     }
   }
 
-  launch(duration: number): void {
+  private recitalBus: GainNode | null = null
+  private rockets = new Set<AudioBufferSourceNode>()
+
+  launch(): void {
     const ctx = this.ctx
     if (!ctx || !this.master || !this.visible || !this.enabled) return
-    const t = ctx.currentTime
-    const end = t + duration
-    const pitch = 630 + Math.random() * 120
-    const whistle = ctx.createOscillator()
-    whistle.type = 'sine'
-    whistle.frequency.setValueAtTime(pitch, t)
-    whistle.frequency.exponentialRampToValueAtTime(pitch * 2.1, t + duration * .54)
-    whistle.frequency.exponentialRampToValueAtTime(pitch * 3.25, end)
+    if (!this.burstSample) { void this.loadBurst(ctx); return }
+    const rocket = ctx.createBufferSource()
+    rocket.buffer = this.burstSample
     const amp = ctx.createGain()
-    amp.gain.setValueAtTime(.0001, t)
-    amp.gain.exponentialRampToValueAtTime(.079, t + duration * .17)
-    amp.gain.exponentialRampToValueAtTime(.041, end - .09)
-    amp.gain.exponentialRampToValueAtTime(.0001, end - .014)
-    whistle.connect(amp)
+    amp.gain.value = .74 + Math.random() * .12
+    rocket.connect(amp)
     amp.connect(this.master)
-    this.rustle(t, duration * .85, 3200, .19)
-    whistle.start(t)
-    whistle.stop(end)
+    this.rockets.add(rocket)
+    rocket.onended = () => { this.rockets.delete(rocket); rocket.disconnect(); amp.disconnect() }
+    rocket.start()
   }
 
-  firework(): void {
-    const ctx = this.ctx
-    if (!ctx || !this.master || !this.visible || !this.enabled) return
-    if (!this.burstSample) {
-      void this.loadBurst(ctx)
-      this.rustle(ctx.currentTime, .38, 390, .48)
-      return
+  stopFireworks(): void {
+    this.recitalBus?.disconnect()
+    this.recitalBus = null
+    if (this.musicGain && this.ctx) {
+      this.musicGain.gain.cancelScheduledValues(this.ctx.currentTime)
+      this.musicGain.gain.setTargetAtTime(.2,this.ctx.currentTime,.04)
     }
-    const burst = ctx.createBufferSource()
-    burst.buffer = this.burstSample
-    burst.playbackRate.value = .90 + Math.random() * .17
-    const amp = ctx.createGain()
-    amp.gain.value = .71 + Math.random() * .11
-    burst.connect(amp)
-    amp.connect(this.master)
-    burst.start()
+    for (const rocket of this.rockets) rocket.stop()
+    this.rockets.clear()
   }
 
   private rustle(t: number, duration: number, frequency: number, peak: number, bus = this.master): void {
@@ -259,29 +338,24 @@ export class Sfx {
     osc.stop(when + dur + 0.02)
   }
 
-  private piano(freq: number, dur: number, peak: number, delay: number): void {
-    if (!this.enabled || !this.visible || !this.ctx || !this.master) return
+  private piano(freq: number, dur: number, peak: number, delay: number, bus = this.master): void {
+    if (!this.enabled || !this.visible || !this.ctx || !bus) return
     const t = this.ctx.currentTime + delay
-    const master = this.ctx.createGain()
-    master.gain.setValueAtTime(0.0001, t)
-    master.gain.exponentialRampToValueAtTime(peak, t + 0.012)
-    master.gain.exponentialRampToValueAtTime(0.0001, t + dur)
-    master.connect(this.master)
-    const partials = [
-      { mult: 1, type: 'triangle' as OscillatorType, amp: 1 },
-      { mult: 2, type: 'sine' as OscillatorType, amp: 0.32 },
-      { mult: 3, type: 'sine' as OscillatorType, amp: 0.1 },
-    ]
-    for (const partial of partials) {
+    // Hammer harmonics die away before the sustained fundamental, like a felt piano.
+    for (const [ratio, weight, decay] of [[1,1,1],[2.001,.39,.68],[3.004,.18,.43],[4.007,.085,.23]]) {
       const osc = this.ctx.createOscillator()
       const amp = this.ctx.createGain()
-      osc.type = partial.type
-      osc.frequency.setValueAtTime(freq * partial.mult, t)
-      amp.gain.value = partial.amp
-      osc.connect(amp)
-      amp.connect(master)
+      const level = peak * weight
+      const tail = dur * decay
+      osc.type = 'sine'
+      osc.frequency.value = freq * ratio
+      amp.gain.setValueAtTime(.0001,t)
+      amp.gain.exponentialRampToValueAtTime(level,t+.008)
+      amp.gain.exponentialRampToValueAtTime(level*.32,t+tail*.24)
+      amp.gain.exponentialRampToValueAtTime(.0001,t+tail)
+      osc.connect(amp).connect(bus)
       osc.start(t)
-      osc.stop(t + dur + 0.02)
+      osc.stop(t+tail+.01)
     }
   }
 

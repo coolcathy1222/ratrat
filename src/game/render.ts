@@ -7,9 +7,10 @@ import { PLAY_AREA, STAGE, boardGeom, cellCenter, cellRect, type Rect } from './
 
 import { ink, muted, accent, paper, edge, berry, label, mark, flower, page, rule, type Mark } from './stationery'
 
-import { GOODS, GOOD_IDS, TOOL, type Heist, type Haul } from '../core/heist'
+import { CHESTS, RELICS, GOODS, GOOD_IDS, TOOL, type Heist, type Haul } from '../core/heist'
+import { cottageResidents } from './cottage'
 import { lootArt } from './loot-art'
-import { nightSky, pulsePhase, tileSparks, waveStep } from './celebration'
+import { GATHER_MS, POCKET_MOUTH, pocketPosition, nightSky, pulsePhase, tileSparks, waveDelay, celebrateMs } from './celebration'
 
 export interface Hot extends Rect {
   id: string
@@ -18,18 +19,21 @@ export interface Hot extends Rect {
 export interface PlayView {
   level: LevelDef
   path: CellPos[]
-  hintCell: CellPos | null
+  guidance: CellPos[]
+  freeLens: boolean
   hintLeft: number
   remaining: number | null
   shake: number
   won: boolean
   winAt: number
   showDrop: boolean
+  fireworksAt: number
   dropAt: number
   plan: Heist
   haul: Haul | null
   spawnAt: number
   pops: Record<string, number>
+  dropSlots: number[]
 }
 
 export interface Frame {
@@ -39,7 +43,8 @@ export interface Frame {
   assets: AssetBook
   save: SaveData
   pressed: string | null
-  screen: 'home' | 'play' | 'dex' | 'rank' | 'warehouse'
+  screen: 'home' | 'play' | 'dex' | 'rank' | 'warehouse' | 'cottage'
+  cottageAt: number
   rankTab: 'total' | 'daily'
   detail: Species | null
   shared: CanvasImageSource | null
@@ -304,11 +309,39 @@ function traceRibbon(ctx: CanvasRenderingContext2D, centers: Array<{ x: number; 
   ctx.lineTo(last.x, last.y)
 }
 
+function pocket(ctx: CanvasRenderingContext2D, age: number, front: boolean): void {
+  const enter = Math.min(1, age / 260)
+  const bounce = Math.sin(age / 70) * Math.sin(Math.PI * Math.min(1, age / 2000))
+  ctx.save()
+  ctx.translate(POCKET_MOUTH.x, POCKET_MOUTH.y + 190 * (1 - enter) ** 2)
+  ctx.scale(1 + bounce * .018, 1 - bounce * .028)
+  ctx.lineWidth = 5
+  ctx.strokeStyle = '#604638'
+  ctx.fillStyle = front ? '#DBA569' : '#5B423A'
+  ctx.beginPath()
+  if (front) {
+    ctx.moveTo(-91, 0)
+    ctx.bezierCurveTo(-49, 17, 47, 17, 91, 0)
+    ctx.bezierCurveTo(89, 32, 132, 65, 115, 113)
+    ctx.bezierCurveTo(99, 158, -93, 162, -114, 115)
+    ctx.bezierCurveTo(-135, 76, -96, 33, -91, 0)
+  } else ctx.ellipse(0, 0, 91, 21, 0, 0, 2 * Math.PI)
+  ctx.fill(); ctx.stroke()
+  if (front) {
+    stitches(ctx, {x: -62, y: 50, w: 124, h: 64}, 19, '#92663F')
+    mark(ctx, 'paw', 0, 82, 1.25, '#8F633E')
+    ctx.strokeStyle = '#EFD49E'
+    ctx.lineWidth = 7
+    ctx.beginPath(); ctx.moveTo(-84, 18); ctx.quadraticCurveTo(0, 44, 85, 18); ctx.stroke()
+  }
+  ctx.restore()
+}
+
 function drawBoard(
   frame: Frame,
   level: LevelDef,
   path: CellPos[],
-  hint: CellPos | null,
+  hints: CellPos[],
   area: Rect,
   opts: { interactive: boolean; shake: number; won: boolean; winAt: number; spawnAt: number; pops: Record<string, number> },
 ): void {
@@ -317,11 +350,12 @@ function drawBoard(
   const ox = Math.sin(opts.shake * 24) * opts.shake * 10
   const order = new Map(path.map((cell, index) => [`${cell.x},${cell.y}`, index]))
   const bursts: Array<{ x: number; y: number; phase: number; seed: number }> = []
-  const step = waveStep(path.length)
+  const pocketAge = opts.won ? frame.now - opts.winAt - celebrateMs(path.length) : -1
   const ready = path.filter((cell) => appearScale(frame.now, opts.spawnAt, spawnDelay(level, cell)) >= 0.98)
   ctx.save()
   ctx.translate(ox, 0)
-  if (ready.length > 1) {
+  if (pocketAge >= 0) pocket(ctx, pocketAge, false)
+  if (ready.length > 1 && pocketAge < 0) {
     const centers = ready.map((cell) => cellCenter(geom, cell))
     const width = Math.max(18, geom.cell * 0.22)
     ctx.lineCap = 'round'
@@ -339,14 +373,17 @@ function drawBoard(
     ctx.stroke()
     ctx.restore()
   }
-  for (const cell of level.cells) {
+  if (pocketAge >= GATHER_MS && pocketAge < GATHER_MS + 700) {
+    tileSparks(ctx, STAGE.w / 2, STAGE.h / 2, 155, (pocketAge-GATHER_MS) / 700, .36, true)
+  }
+  for (const [cellIndex, cell] of level.cells.entries()) {
     const born = appearScale(frame.now, opts.spawnAt, spawnDelay(level, cell))
     if (born <= 0) continue
     const rect = cellRect(geom, cell)
     const key = `${cell.x},${cell.y}`
     if (opts.interactive && cell.kind === 'rat' && born > 0.45) hot(frame, `cell:${cell.x}:${cell.y}`, rect)
     const index = order.get(key)
-    const at = opts.won && index != null ? opts.winAt + index * step : opts.pops[key]
+    const at = opts.won && index != null ? opts.winAt + waveDelay(index, path.length) : opts.pops[key]
     const phase = index != null ? pulsePhase(frame.now, at, opts.won) : -1
     const lift = phase < 0 ? 0 : Math.sin(Math.PI * phase) * (1 - phase)
     const spring = phase < 0 ? 0 : Math.sin(phase * Math.PI * 2) * (1 - phase)
@@ -354,6 +391,14 @@ function drawBoard(
     const cx = rect.x + rect.w / 2
     const cy = rect.y + rect.h / 2
     ctx.save()
+    if (pocketAge >= 0) {
+      const slot = frame.play!.dropSlots[cellIndex]
+      const pos = pocketPosition(pocketAge, slot, level.cells.length, cx, cy, rect.w)
+      if (pos.landed) { ctx.restore(); continue }
+      ctx.translate(pos.x, pos.y)
+      ctx.rotate(pos.angle)
+      ctx.translate(-cx, -cy)
+    }
     const settling = Math.max(0, 1 - born)
     ctx.globalAlpha = Math.min(1, born * 1.6)
     ctx.translate(cx, cy + settling * rect.h * .32 - lift * rect.h * (opts.won ? .04 : .14))
@@ -368,16 +413,21 @@ function drawBoard(
     ctx.shadowOffsetY = 3
     const isStart = cell.x === level.start.x && cell.y === level.start.y
     const isEnd = cell.x === level.end.x && cell.y === level.end.y
+    const pickup = frame.play!.plan.cells[key]
+    const chest = pickup?.kind === 'chest' ? CHESTS[pickup.tier] : null
+    const badge = isStart ? '起' : isEnd ? '终' : chest ? chest.name.slice(0, 2) : ''
+    const outline = isStart ? '#A9493F' : isEnd ? '#3E607C' : '#946625'
     const revealed = opts.won && at != null && frame.now >= at
-    ctx.fillStyle = revealed ? (phase >= 0 ? '#DBECA6' : '#EEF1CF') : isStart ? '#E7C79B' : isEnd ? '#F8DF93' : index != null ? '#FFF1C9' : paper
+    ctx.fillStyle = revealed ? '#FFF2CD' : isStart ? '#FFD3BB' : isEnd ? '#DAE8F1'
+      : chest ? '#FFE1A0' : index != null ? '#FFF1C9' : paper
     ctx.fill()
     ctx.shadowColor = 'transparent'
     ctx.clip()
-    if (index != null) {
+    if (badge || index != null) {
       const inset = 2.5
       roundRect(ctx, rect.x + inset, rect.y + inset, rect.w - inset * 2, rect.h - inset * 2, rect.w * .19)
-      ctx.strokeStyle = revealed ? '#82A254' : '#C77842'
-      ctx.lineWidth = Math.max(2, rect.w * .047)
+      ctx.strokeStyle = badge ? outline : revealed ? '#D8B572' : '#C77842'
+      ctx.lineWidth = Math.max(2, rect.w * (badge ? .083 : .047))
       ctx.stroke()
     } else {
       stitches(ctx, {x: rect.x + 4, y: rect.y + 4, w: rect.w - 8, h: rect.h - 8}, rect.w * .18, '#D2CEAD')
@@ -388,7 +438,6 @@ function drawBoard(
       ctx.restore()
       continue
     }
-    const pickup = frame.play!.plan.cells[key]
     const who = isStart ? frame.play!.plan.thief : pickup?.kind === 'guest' ? pickup.id : null
     if (who) {
       paintHead(ctx, frame.assets.calm[who], SPECIES_COLOR[who], rect.x+4, rect.y+3, rect.w-8, rect.h-8)
@@ -396,16 +445,30 @@ function drawBoard(
     } else if (isEnd) {
       if (frame.assets.hole) paintHead(ctx, frame.assets.hole, ink, rect.x+4,rect.y+4,rect.w-8,rect.h-8)
       else drawHole(ctx, rect)
+    } else if (chest) {
+      ctx.save()
+      ctx.translate(cx, cy - rect.h * .055)
+      ctx.scale(rect.w / 93, rect.w / 93)
+      chestStamp(ctx, 0, 0, chest.color, frame.now - opts.spawnAt, false)
+      ctx.restore()
     } else if (pickup) {
       const atlas = revealed ? frame.assets.scenes.supplies : frame.assets.scenes.suppliesPlain
       lootArt(ctx, atlas, pickup.kind === 'good' ? pickup.id : 'lens', cx, cy, rect.w * .88)
+    }
+    if (badge) {
+      const h = rect.h * .29
+      const w = h * (badge.length + .64)
+      const bottom = rect.y + rect.h
+      fillRound(ctx, {x: cx-w/2, y: bottom-h, w, h: h+2}, h*.32, outline)
+      label(ctx, badge, cx, bottom-h*.49, h*.78, '#FFF9E8')
     }
     ctx.restore()
     ctx.restore()
     if (phase >= 0) bursts.push({ x: cx, y: cy - lift * rect.h * .2, phase, seed })
   }
+  if (pocketAge >= 0) pocket(ctx, pocketAge, true)
   for (const burst of bursts) tileSparks(ctx, burst.x, burst.y, geom.cell, burst.phase, burst.seed, opts.won)
-  if (hint) {
+  hints.forEach((hint, i) => {
     const rect = cellRect(geom, hint)
     const pulse = 1 + Math.sin(frame.now / 160) * 0.04
     ctx.save()
@@ -415,8 +478,14 @@ function drawBoard(
     ctx.lineWidth = 6
     roundRect(ctx, -rect.w / 2 - 6, -rect.h / 2 - 6, rect.w + 12, rect.h + 12, rect.w * 0.24)
     ctx.stroke()
+    const r = Math.max(11, rect.w * .17)
+    ctx.fillStyle = ink
+    ctx.beginPath()
+    ctx.arc(rect.w * .32, -rect.h * .32, r, 0, 2 * Math.PI)
+    ctx.fill()
+    label(ctx, String(i + 1), rect.w * .32, -rect.h * .32, r * 1.48, paper)
     ctx.restore()
-  }
+  })
   ctx.restore()
 }
 
@@ -451,9 +520,12 @@ function drawHome(frame: Frame): void {
     SPECIES_IDS.forEach((id, index) => paintHead(ctx, frame.assets.calm[id], SPECIES_COLOR[id],
       60 + (index % 3) * 202, 280 + Math.floor(index / 3) * 188, 192, 178))
   }
-  mark(ctx, 'sun', 72, 702, .76, berry)
-  label(ctx, '出发前，先拍张合照', 98, 701, 22, ink, 'left')
-  label(ctx, 'FIELD ALBUM    /    01', 655, 701, 17, muted, 'right')
+  // The group photograph is the doorway to the cottage; the whole card is tappable.
+  hot(frame,'cottage',{x:36,y:266,w:648,h:457})
+  mark(ctx,'paw',71,701,.8,accent)
+  label(ctx,'鼠鼠之家',101,701,25,ink,'left')
+  label(ctx,'进屋看看',609,701,21,accent,'right')
+  mark(ctx,'arrow',642,701,.82,accent)
   button(frame, 'start', {x: 36, y: 744, w: 648, h: 96}, frame.save.finished ? '再玩一次' : frame.save.level > 1 ? '继续游戏' : '开始游戏')
   mark(ctx, 'arrow', 635, frame.pressed === 'start' ? 796 : 792, 1.15, paper)
   label(ctx, frame.save.finished ? '全部关卡已完成' : `第 ${frame.save.level} 关  /  共 ${LEVEL_COUNT} 关`, 42, 877, 22, muted, 'left')
@@ -477,23 +549,47 @@ function drawHome(frame: Frame): void {
   flower(ctx, 360, 1243, 14, '#C6CDA8')
 }
 
+function drawCottage(frame: Frame): void {
+  const {ctx, assets} = frame
+  page(ctx)
+  iconButton(frame,'back',28,36,'back')
+  label(ctx,'鼠鼠之家',360,77,43,ink)
+  const residents = SPECIES_IDS.filter(id => frame.save.dex[id] > 0)
+  label(ctx,`已入住 ${residents.length} / ${SPECIES_IDS.length} 只`,360,132,23,muted)
+  const room = {x:24,y:178,w:672,h:1008}
+  surface(ctx,room,28,'#F4DFC2','#AB8969',5)
+  ctx.save()
+  roundRect(ctx,room.x,room.y,room.w,room.h,28)
+  ctx.clip()
+  if (assets.scenes.cottage) ctx.drawImage(assets.scenes.cottage,room.x,room.y,room.w,room.h)
+  cottageResidents(ctx,assets,residents,Math.max(0,frame.now-frame.cottageAt))
+  ctx.restore()
+  flower(ctx,360,1235,13,'#C7CDAA')
+}
+
 function drawPlay(frame: Frame, play: PlayView): void {
   const ctx = frame.ctx
   page(ctx)
-  iconButton(frame, 'settings', 36, 32, 'gear')
+  if (!play.won) iconButton(frame, 'settings', 36, 32, 'gear')
   iconButton(frame, 'sound', 604, 32, frame.save.sound ? 'sound-on' : 'sound-off')
   label(ctx, 'F I E L D   M I S S I O N', 360, 46, 17, muted)
   label(ctx, `第 ${play.level.id} 关`, 360, 94, 42)
   const tray = {x: 22, y: 151, w: 676, h: 782}
   surface(ctx, tray, 32, '#DBDABA', '#B2AE8E')
   stitches(ctx, {x: 31, y: 160, w: 658, h: 764}, 25, '#FFF2D7')
-  mark(ctx, 'flag', 65, 202, .9)
-  label(ctx, '补给路线', 94, 202, 25, ink, 'left')
+  const crewBadge = (species: Species, title: string, x: number, bg: string) => {
+    fillRound(ctx, {x, y: 167, w: 188, h: 60}, 17, bg)
+    paintHead(ctx, frame.assets.calm[species], SPECIES_COLOR[species], x+6, 169, 56, 56)
+    label(ctx, title, x+71, 182, 17, muted, 'left')
+    label(ctx, SPECIES_NAME[species], x+71, 209, 25, ink, 'left')
+  }
+  crewBadge(play.plan.thief, '本关主角', 45, '#FFF2D9')
+  if (play.plan.guest) crewBadge(play.plan.guest, '新鼠出没', 246, '#FFE3CC')
   const remaining = play.remaining
   label(ctx, remaining != null ? `倒计时  ${formatTime(remaining)}` : '自由探索', 654, 202, 23, remaining != null && remaining <= 5 ? berry : ink, 'right')
   rule(ctx, 54, 234, 666, '#BCB79A')
 
-  drawBoard(frame, play.level, play.path, play.hintCell, PLAY_AREA, {
+  drawBoard(frame, play.level, play.path, play.guidance, PLAY_AREA, {
     interactive: !play.won && !frame.settings && !frame.reward && !frame.timeout && !frame.stuck && !play.showDrop,
     shake: play.shake,
     won: play.won,
@@ -501,12 +597,14 @@ function drawPlay(frame: Frame, play: PlayView): void {
     spawnAt: play.spawnAt,
     pops: play.pops,
   })
+  if (play.won) return
   const total = ratCount(play.level)
   label(ctx, `已连 ${play.path.length} / ${total}`, 40, 977, 26, ink, 'left')
   fillRound(ctx, {x: 268, y: 970, w: 412, h: 16}, 8, '#E3D0B6')
   if (play.path.length) fillRound(ctx, {x: 268, y: 970, w: 412 * play.path.length / total, h: 16}, 8, accent)
+  mark(ctx,'paw',268+412*play.path.length/total,954,.76,accent)
   label(ctx, play.level.tip || '一笔扫齐宝物，最后进鼠洞', 360, 1044, 24, muted, 'center', 500)
-  ghostButton(frame, 'hint', { x: 36, y: 1110, w: 314, h: 96 }, `提示 ${play.hintLeft} · ${frame.save.lenses ? '探路镜' : '广告'}`)
+  ghostButton(frame, 'hint', { x: 36, y: 1110, w: 314, h: 96 }, `提示 ${play.hintLeft} · ${play.freeLens ? '自带镜' : frame.save.lenses ? '探路镜' : '广告'}`)
   button(frame, 'reset', { x: 370, y: 1110, w: 314, h: 96 }, '重置')
 }
 
@@ -616,7 +714,7 @@ function drawSettings(frame: Frame): void {
   label(ctx, frame.save.sound ? '开' : '关', 492, sound.y + 44, 24, muted)
   fillRound(ctx, {x: 523, y: sound.y + 23, w: 66, h: 42}, 21, frame.save.sound ? accent : '#909683')
   fillRound(ctx, {x: frame.save.sound ? 551 : 529, y: sound.y + 29, w: 32, h: 30}, 15, paper)
-  const rules = ['从鼠鼠出发，走完每格再回洞', '每关 50% 机会发现探路镜', '逢五遇见新鼠，入伙机会 25%']
+  const rules = ['从鼠鼠出发，走完每格再回洞', '每关 50% 机会发现探路镜', '宝箱随机出现在路上，通关开箱']
   ctx.textAlign = 'left'
   ctx.fillStyle = ink
   ctx.font = font(28, 600)
@@ -652,16 +750,78 @@ function drawReward(frame: Frame): void {
   ghostButton(frame, 'reward:cancel', { x: 120, y: rect.y + 374, w: 480, h: 72 }, '取消')
 }
 
+function chestStamp(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, elapsed: number, opening = true): void {
+  const open = opening ? Math.min(1, elapsed / 550) : 0
+  ctx.save()
+  ctx.translate(x, y)
+  surface(ctx, {x:-32,y:-1,w:64,h:34},7,color,'#76543E',3)
+  ctx.fillStyle = '#634838'; ctx.fillRect(-27,-4,54,10)
+  ctx.save()
+  ctx.translate(0, -open * 9)
+  ctx.rotate(-open * .13)
+  surface(ctx, {x:-33,y:-22,w:66,h:27},10,color,'#76543E',2)
+  ctx.fillStyle = '#F7D385'
+  ctx.fillRect(-22,-19,6,21); ctx.fillRect(16,-19,6,21)
+  ctx.restore()
+  fillRound(ctx, {x:-7,y:3,w:14,h:13},4,'#FFE5A2')
+  // Stagger the glints so the painted metal catches light as the lid lifts.
+  for (const [sx, sy, delay] of [[-28, -21, 0], [26, -28, 230], [17, 8, 510]]) {
+    const phase = ((elapsed - delay) % 2200) / 850
+    if (phase <= 0 || phase >= 1) continue
+    const light = Math.sin(Math.PI * phase)
+    const radius = 11 * light
+    ctx.save()
+    ctx.translate(sx, sy - open * 5 - phase * 4)
+    const glow = ctx.createRadialGradient(0,0,0,0,0,radius * 1.7)
+    glow.addColorStop(0,'rgba(255,245,187,.85)')
+    glow.addColorStop(1,'rgba(255,222,134,0)')
+    ctx.fillStyle = glow
+    ctx.fillRect(-radius*2,-radius*2,radius*4,radius*4)
+    ctx.fillStyle = '#FFFFE9'
+    ctx.beginPath()
+    ctx.moveTo(0,-radius)
+    ctx.quadraticCurveTo(1,-1,radius*.75,0)
+    ctx.quadraticCurveTo(1,1,0,radius)
+    ctx.quadraticCurveTo(-1,1,-radius*.75,0)
+    ctx.quadraticCurveTo(-1,-1,0,-radius)
+    ctx.fill()
+    ctx.restore()
+  }
+  ctx.restore()
+}
+
+function relicArt(ctx: CanvasRenderingContext2D, item: 'ranunculus' | 'pearl', x: number, y: number): void {
+  ctx.save()
+  ctx.translate(x, y)
+  if (item === 'pearl') {
+    const gold = ctx.createRadialGradient(-5,-6,1,0,0,18)
+    gold.addColorStop(0,'#FFFCDE'); gold.addColorStop(.35,'#FFE5A8'); gold.addColorStop(.8,'#DDAB51'); gold.addColorStop(1,'#AD773B')
+    ctx.fillStyle = gold
+    ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.fill()
+  } else {
+    ctx.strokeStyle = '#759057'; ctx.lineWidth = 3
+    ctx.beginPath(); ctx.moveTo(0,18); ctx.quadraticCurveTo(7,10,2,-5); ctx.stroke()
+    flower(ctx, 2, -4, 22, '#D88273')
+    flower(ctx, 2, -4, 14, '#F5B794')
+    flower(ctx, 2, -4, 8, '#FFDDB0')
+  }
+  ctx.restore()
+}
+
 function drawDrop(frame: Frame, play: PlayView): void {
   const haul = play.haul
   if (!haul) return
   const ctx = frame.ctx
   const elapsed = Math.max(0, frame.now - play.dropAt)
-  nightSky(ctx, elapsed)
+  nightSky(ctx, frame.now - play.fireworksAt)
   hot(frame, 'modal:block', {x: 0, y: 0, ...STAGE})
   const goods = GOOD_IDS.filter(id => haul.counts[id])
   const rows = Math.ceil(goods.length / 2)
-  const height = 465 + rows * 54
+  const chestHeight = haul.chest ? 138 : 0
+  const guestHeight = play.plan.guest ? 110 : 0
+  const rowStep = rows > 6 ? 44 : 54
+  const talentHeight = haul.talent ? 79 : 0
+  const height = 454 + chestHeight + rows * rowStep + talentHeight + guestHeight
   const top = Math.round((STAGE.h - height) / 2 + 30 + 26 * (1 - Math.min(1, elapsed / 320)) ** 3)
   const left = 56
   const width = STAGE.w - left * 2
@@ -674,40 +834,95 @@ function drawDrop(frame: Frame, play: PlayView): void {
   ctx.fillRect(left+2, top+93, width-4, 39)
   label(ctx, `田野行动小分队    /    行动 ${String(play.level.id).padStart(2,'0')}`, inner, top+38, 20, '#FFE9CC','left')
   label(ctx, finalLevel ? '全程告捷！' : '满载回洞！', inner-2, top+91, 48, paper,'left', 800)
-  const who = haul.joined ?? play.plan.thief
-  fillRound(ctx, {x:right-113,y:top+14,w:110,h:106}, 26, '#F8DFC1')
-  paintHead(ctx,frame.assets.calm[who],SPECIES_COLOR[who],right-106,top+18,96,97)
+  const who = play.plan.thief
+  label(ctx,'本关主角',right-106,top+48,17,'#FFE7C9','right')
+  label(ctx,SPECIES_NAME[who],right-106,top+84,29,paper,'right')
+  fillRound(ctx, {x:right-87,y:top+23,w:88,h:88}, 23, '#F8DFC1')
+  paintHead(ctx,frame.assets.calm[who],SPECIES_COLOR[who],right-82,top+27,78,80)
 
   const count = Object.values(haul.counts).reduce((sum, qty) => sum + qty, 0)
-  label(ctx,'入库件数',inner,top+168,21,muted,'left')
+  label(ctx,'路线入库件数',inner,top+168,21,muted,'left')
   label(ctx,`${count} 件`,inner,top+215,38,ink,'left',800)
   ctx.fillStyle = edge
   ctx.fillRect(352,top+159,2,75)
-  label(ctx,'战利品估值',384,top+168,21,muted,'left')
+  label(ctx,'路线补给估值',384,top+168,21,muted,'left')
   label(ctx,`${haul.value} 贝`,384,top+215,38,berry,'left',800)
-  rule(ctx,inner,top+251,right)
-  label(ctx,'战利品清单',inner,top+281,25,ink,'left')
-  label(ctx,'已入库  ✓',right,top+281,20,accent,'right')
+  if (haul.talent) {
+    fillRound(ctx, {x:inner,y:top+249,w:right-inner,h:72}, 15, '#F6D79D')
+    mark(ctx,'sun',inner+29,top+285,.84,'#935626')
+    label(ctx,`${SPECIES_NAME[who]}的本关加成`,inner+56,top+268,18,'#795239','left')
+    label(ctx,haul.talent,inner+56,top+299,22,ink,'left')
+  }
+  const listTop = top + talentHeight
+  rule(ctx,inner,listTop+251,right)
+  label(ctx,'战利品清单',inner,listTop+281,25,ink,'left')
+  label(ctx,'已入库  ✓',right,listTop+281,20,accent,'right')
   goods.forEach((id, index) => {
     const posX = inner + index % 2 * 276
-    const posY = top + 307 + Math.floor(index/2) * 54
-    fillRound(ctx,{x:posX,y:posY,w:258,h:46},12,'#F6E9D3')
-    lootArt(ctx, frame.assets.scenes.supplies, id,posX+26,posY+23,42)
-    label(ctx,GOODS[id][0],posX+52,posY+23,21,ink,'left')
-    label(ctx,`×${haul.counts[id]}`,posX+242,posY+23,21,accent,'right')
+    const posY = listTop + 307 + Math.floor(index/2) * rowStep
+    fillRound(ctx,{x:posX,y:posY,w:258,h:rowStep-6},12,'#F6E9D3')
+    lootArt(ctx, frame.assets.scenes.supplies, id,posX+26,posY+(rowStep-6)/2,42)
+    label(ctx,GOODS[id][0],posX+52,posY+(rowStep-6)/2,21,ink,'left')
+    label(ctx,`×${haul.counts[id]}`,posX+242,posY+(rowStep-6)/2,21,accent,'right')
   })
-  const foot = top + 316 + rows * 54
-  const notes: string[] = []
-  if (haul.tools) notes.push(`探路镜 +${haul.tools}`)
-  if (haul.joined) notes.push(`${SPECIES_NAME[haul.joined]} 已入伙`)
-  else if (play.plan.guest) notes.push(`${SPECIES_NAME[play.plan.guest]} 溜走了`)
-  label(ctx,notes.join('   ·   ') || '今日收工，宝物已妥善收藏。',360,foot+16,23,haul.joined ? berry : muted)
-  const actionsTop = foot+53
+  const foot = listTop + 316 + rows * rowStep
+  if (haul.tools) label(ctx,`探路镜 +${haul.tools}`,inner,foot+16,21,accent,'left')
+  const guest = play.plan.guest
+  if (guest) {
+    fillRound(ctx,{x:inner,y:foot+35,w:right-inner,h:100},18,'#F4E3D8')
+    const x = inner + 9
+    const y = foot + 39
+    const size = 92
+    const reveal = Math.min(1, Math.max(0, (elapsed-420)/940))
+    if (reveal < 1) paintHead(ctx,frame.assets.shadow[guest],ink,x,y,size,size)
+    if (reveal > 0) {
+      ctx.save()
+      const edgeY = y + size * (1-reveal)
+      ctx.beginPath()
+      ctx.rect(x,edgeY,size,size*reveal)
+      ctx.clip()
+      paintHead(ctx,frame.assets.calm[guest],SPECIES_COLOR[guest],x,y,size,size)
+      ctx.restore()
+      if (reveal < 1) {
+        const sheen = ctx.createLinearGradient(x,0,x+size,0)
+        sheen.addColorStop(0,'transparent')
+        sheen.addColorStop(.5,'#FFF9CC')
+        sheen.addColorStop(1,'transparent')
+        ctx.fillStyle = sheen
+        ctx.fillRect(x,edgeY-2,size,4)
+      }
+    }
+    label(ctx,'遇见新鼠',inner+117,foot+64,18,muted,'left')
+    if (reveal > .35) label(ctx,SPECIES_NAME[guest],inner+117,foot+104,30,ink,'left')
+    if (reveal >= 1) label(ctx,haul.joined ? '已加入图鉴' : '这次溜走了',right-18,foot+85,23,haul.joined ? accent : muted,'right')
+  }
+  const boxTop = foot + 42 + guestHeight
+  const chest = haul.chest
+  if (chest) {
+    const style = CHESTS[chest.tier]
+    fillRound(ctx,{x:inner,y:boxTop,w:right-inner,h:116},18,'#F1E2C3')
+    chestStamp(ctx,inner+52,boxTop+59,style.color,elapsed)
+    label(ctx,style.name,inner+104,boxTop+30,24,ink,'left')
+    label(ctx,`稀有率 ${Math.round(chest.chance*100)}%`,right-14,boxTop+30,18,muted,'right')
+    let reward: string
+    if (chest.item === 'weasel') reward = chest.stolen ? `盗宝鼬偷走了 1 份${GOODS[chest.stolen][0]}` : '遇到盗宝鼬，保住了全部补给'
+    else if (chest.item === 'double') reward = '翻倍卡已生效 · 路线补给 ×2'
+    else if (chest.item === 'pearl' || chest.item === 'ranunculus') {
+      reward = `${RELICS[chest.item][0]} ×1 · 已入库`
+      relicArt(ctx,chest.item,right-32,boxTop+78)
+    } else reward = `${GOODS[chest.item][0]} ×1 · 已入库`
+    label(ctx,reward,inner+104,boxTop+79,22,berry,'left')
+  }
+  const actionsTop = boxTop + chestHeight
   if (finalLevel) button(frame,'drop:next',{x:inner,y:actionsTop,w:right-inner,h:72},'回主页')
   else {
     ghostButton(frame,'drop:home',{x:inner,y:actionsTop,w:170,h:72},'回主页')
     button(frame,'drop:next',{x:inner+186,y:actionsTop,w:right-inner-186,h:72},'下一关')
   }
+}
+
+function saveRelicWorth(save: SaveData): number {
+  return save.relics.pearl * RELICS.pearl[1] + save.relics.ranunculus * RELICS.ranunculus[1]
 }
 
 function drawWarehouse(frame: Frame): void {
@@ -716,7 +931,8 @@ function drawWarehouse(frame: Frame): void {
   iconButton(frame, 'back', 28, 36, 'back')
   label(ctx, '战利品仓库', 360, 80, 42)
   if (frame.assets.scenes.snack) paintHead(ctx,frame.assets.scenes.snack,paper,555,54,100,97)
-  const worth = GOOD_IDS.reduce((sum,id) => sum + GOODS[id][1]*(frame.save.stock[id] ?? 0), 0)
+  const relicWorth = saveRelicWorth(frame.save)
+  const worth = relicWorth + GOOD_IDS.reduce((sum,id) => sum + GOODS[id][1]*(frame.save.stock[id] ?? 0), 0)
   label(ctx, `藏品总值  ${worth} 贝`, 360, 148, 26, muted)
   GOOD_IDS.forEach((id,index) => {
     const left = 30 + index % 3 * 222
@@ -730,7 +946,14 @@ function drawWarehouse(frame: Frame): void {
   surface(ctx,{x:32,y:1000,w:656,h:135},22,'#E3E2C6')
   lootArt(ctx, frame.assets.scenes.supplies, 'lens',90,1067,84)
   label(ctx,`${TOOL}  ×${frame.save.lenses}`,150,1046,28,ink,'left')
-  label(ctx,'使用提示时优先消耗，无需广告',150,1091,22,muted,'left')
+  label(ctx,'每次标出最多五步，洞口不计步',150,1091,22,muted,'left')
+  ;(['ranunculus','pearl'] as const).forEach((id,i) => {
+    const left = 32 + i * 334
+    surface(ctx,{x:left,y:1152,w:322,h:92},18,paper)
+    relicArt(ctx,id,left+36,1198)
+    label(ctx,RELICS[id][0],left+68,1182,23,ink,'left')
+    label(ctx,`${RELICS[id][1]} 贝  ·  ×${frame.save.relics[id]}`,left+68,1217,20,muted,'left')
+  })
 }
 
 function drawTimeout(frame: Frame): void {
@@ -778,7 +1001,9 @@ function drawDetail(frame: Frame, species: Species): void {
   ctx.font = font(27, 500)
   const lines = wrapText(ctx, profile.bio, textWidth)
   const lineHeight = 42
-  const height = 554 + lines.length * lineHeight
+  const talentLines = wrapText(ctx, profile.talent, textWidth - 28)
+  const talentHeight = 22 + talentLines.length * 32
+  const height = 570 + lines.length * lineHeight + talentHeight
   const rect = { x: (STAGE.w - width) / 2, y: (STAGE.h - height) / 2, w: width, h: height }
   const left = rect.x + inset
   card(ctx, rect)
@@ -790,6 +1015,9 @@ function drawDetail(frame: Frame, species: Species): void {
   lines.forEach((line, index) => {
     label(ctx, line, left, rect.y + 452 + index * lineHeight, 27, ink, 'left', 500)
   })
+  const talentTop = rect.y + 437 + lines.length * lineHeight
+  fillRound(ctx,{x:left,y:talentTop,w:textWidth,h:talentHeight},14,'#E6E9CA')
+  talentLines.forEach((line,i) => label(ctx,line,left+14,talentTop+27+i*32,23,ink,'left'))
   button(frame, 'detail:close', { x: left, y: rect.y + height - 112, w: textWidth, h: 76 }, '返回图鉴')
 }
 
@@ -872,6 +1100,7 @@ export function render(frame: Frame): void {
   }
   if (frame.screen === 'home') drawHome(frame)
   else if (frame.screen === 'play' && frame.play) drawPlay(frame, frame.play)
+  else if (frame.screen === 'cottage') drawCottage(frame)
   else if (frame.screen === 'warehouse') drawWarehouse(frame)
   else if (frame.screen === 'dex') drawDex(frame)
   else drawRank(frame)

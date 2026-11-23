@@ -1,5 +1,11 @@
-field-burst.wav
+field-burst.wav and meadow-rocket.wav
 Whistle and Explosion Single_Firework — Rudmer_Rotteveel (Freesound)
 https://freesound.org/people/Rudmer_Rotteveel/sounds/336008/
 CC0 1.0 — https://creativecommons.org/publicdomain/zero/1.0/
-Edited for the game: isolated burst, mono mix, EQ, compression and tail fade.
+field-burst: isolated burst, mono mix, EQ, compression and tail fade.
+meadow-rocket: original stereo ascent; pitch-lowered report with a soft low-frequency thump, scattered crackles and stereo outdoor echoes.
+
+Trail piano: single-note melodic adaptations from W. A. Mozart, Sonata for Two Pianos in D, K.448.
+Settlement tracks k448-phrase-1 through k448-phrase-5: new stereo grand-piano performances rendered from both notated piano parts with FluidSynth and TimGM6mb. Excerpts in level order: I, opening fanfare ending before the triplet pickup in bar 2; I, that pickup and its dotted answer through bar 4; I, the rising sequence from bar 9 resolving on the downbeat of bar 13; II, bars 1–4 ending before the pickup to bar 5; III, the answering statement of the rondo from the pickup in bar 8 through the tonic cadence in bar 16.
+Score (Neue Mozart-Ausgabe): https://dme.mozarteum.at/DME/objs/pdf/nma_191_2_38.pdf
+Digital score: https://tedmuller.us/Piano/MozartSonataInDForTwoPianos.htm

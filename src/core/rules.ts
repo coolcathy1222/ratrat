@@ -122,7 +122,7 @@ export function undoOne(path: CellPos[]): CellPos[] {
   return path.slice(0, -1)
 }
 
-function coversAll(level: LevelDef, path: CellPos[], rats: number): boolean {
+function completeRoute(level: LevelDef, path: CellPos[], rats: number): CellPos[] | null {
   const visited = new Set(path.map(keyOf))
   let nodes = 0
   function search(current: CellPos[]): boolean {
@@ -145,26 +145,26 @@ function coversAll(level: LevelDef, path: CellPos[], rats: number): boolean {
     return false
   }
   for (const cell of path) visited.add(keyOf(cell))
-  return search(path.map((cell) => ({ ...cell })))
+  const route = [...path]
+  return search(route) ? route : null
+}
+
+function remainingRoute(level: LevelDef, path: CellPos[]): CellPos[] {
+  if (path.every((cell, i) => level.solution[i] && sameCell(cell, level.solution[i]))) {
+    return level.solution.slice(path.length)
+  }
+  const route = completeRoute(level, path, ratCount(level))
+  return route?.slice(path.length) ?? []
 }
 
 export function hintNext(level: LevelDef, path: CellPos[]): CellPos | null {
-  if (isWon(level, path)) return null
-  const rats = indexLevel(level).ratCount
-  if (path.length === 0) return { ...level.start }
-  if (path.length < level.solution.length && path.every((cell, i) => sameCell(cell, level.solution[i]))) {
-    const authored = level.solution[path.length]
-    const result = step(level, path, authored)
-    if (result.ok && result.path.length > path.length) return { ...authored }
-  }
-  const cur = path[path.length - 1]
-  for (const dir of DIRS) {
-    const next = { x: cur.x + dir.x, y: cur.y + dir.y }
-    const result = step(level, path, next)
-    if (!result.ok || result.path.length === path.length) continue
-    if (coversAll(level, result.path, rats)) return next
-  }
-  return null
+  return remainingRoute(level, path)[0] ?? null
+}
+
+export function hintSteps(level: LevelDef, path: CellPos[]): CellPos[] {
+  return remainingRoute(level, path)
+    .filter(cell => !sameCell(cell, level.start) && !sameCell(cell, level.end))
+    .slice(0, 5)
 }
 
 export function minClearSeconds(count: number): number {

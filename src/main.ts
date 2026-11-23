@@ -8,7 +8,7 @@ const canvas: HTMLCanvasElement = found
 const app = new App(canvas, createWebPlatform(), {
   assetBase: './assets',
   async readAudioFile(path) {
-    const response = await fetch(path)
+    const response = await fetch(path, {cache: 'no-cache'})
     if (!response.ok) throw new Error(`Audio request failed: ${response.status}`)
     return response.arrayBuffer()
   },

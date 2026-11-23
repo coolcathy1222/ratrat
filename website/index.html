@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f6f3e8"><title>EVIL2D 游戏厅</title>
+<style>
+*{box-sizing:border-box}
+:root{color-scheme:light;--ink:#24271e;--paper:#f6f3e8}
+body{margin:0;background-color:var(--paper);color:var(--ink);font-family:"DM Sans",system-ui,"PingFang SC","Microsoft YaHei",sans-serif}
+main,header,footer{width:min(1060px,calc(100% - 72px));margin:auto}
+header{height:84px;display:flex;align-items:center;gap:12px;border-bottom:2px solid var(--ink)}
+.brand{font:bold 24px/1 ui-monospace,monospace;letter-spacing:-1.3px}
+.logo{background:var(--ink);color:var(--paper);width:34px;height:29px;border-radius:6px;display:grid;place-items:center;box-shadow:inset 0 -4px #727966;font:900 16px/1 monospace}
+.intro{display:flex;align-items:center;justify-content:space-between;margin:42px 0 30px}
+h1{margin:0;font-size:clamp(38px,5.2vw,66px);letter-spacing:-.075em;line-height:1.16}
+.dots{height:28px;width:113px;background:radial-gradient(circle,var(--ink) 2px,transparent 2.3px) 0 0/9px 9px;transform:skew(-17deg)}
+.library{display:grid;grid-template-columns:1fr 1fr;gap:25px}
+.game{display:flex;flex-direction:column;min-width:0;text-decoration:none;color:inherit;border:2px solid var(--ink);border-radius:15px;background:#fffcf3;box-shadow:0 5px var(--ink);overflow:hidden;transition:transform .18s,box-shadow .18s}
+.game:hover,.game:focus-visible{transform:translateY(-4px);box-shadow:0 9px var(--ink)}
+.game:focus-visible{outline:3px solid #ac4b2c;outline-offset:5px}
+.cover{aspect-ratio:1.72;position:relative;overflow:hidden;border-bottom:2px solid var(--ink)}
+.mice{background:#f9e7cb}
+.mice img{width:100%;height:100%;object-fit:contain;display:block;mix-blend-mode:multiply}
+.race{background:repeating-linear-gradient(128deg,transparent 0 27px,#cadd79 27.5px 30px,transparent 31px 52px),#b6d064;isolation:isolate}
+.race::before,.race::after{content:"";position:absolute;width:18%;height:115%;background:conic-gradient(#333d2d 25%,transparent 0 50%,#333d2d 0 75%,transparent 0) 0 0/26px 26px;transform:rotate(15deg);top:-8%;left:8%;opacity:.86}
+.race::after{left:auto;right:-7%;opacity:.32}
+.race img{position:absolute;height:118%;width:auto;top:-8%;left:50%;transform:translateX(-50%) rotate(9deg);border:5px solid #252c20;border-radius:15px;box-shadow:8px 10px 0 #738743;z-index:1}
+.details{padding:23px 24px 24px;display:grid;grid-template-columns:1fr auto;grid-template-rows:auto auto;gap:8px 10px;align-items:center;flex:1}
+h2{font-size:clamp(22px,2.3vw,32px);margin:0;letter-spacing:-.045em;line-height:1.2}
+p{margin:0;color:#55594c;font-size:15px;line-height:1.6}
+.enter{grid-area:1/2/3/3;border:1.5px solid currentColor;border-radius:50%;width:40px;height:40px;display:grid;place-items:center;font:24px/1 sans-serif}
+.game:hover .enter,.game:focus-visible .enter{background:var(--ink);color:var(--paper)}
+footer{margin-top:44px;border-top:1px solid #b5b5a5;padding:16px 0 26px;font:600 12px/1.5 ui-monospace,monospace;color:#626557;letter-spacing:.035em}
+@media(max-width:680px){main,header,footer{width:calc(100% - 36px)}header{height:58px}.brand{font-size:20px}.logo{width:29px;height:25px}.intro{margin:24px 0 19px}.dots{width:69px;height:19px}.library{grid-template-columns:1fr;gap:19px}.cover{aspect-ratio:2.3}.details{padding:15px 17px;gap:4px 8px}.enter{width:35px;height:35px}p{font-size:14px}footer{margin-top:26px}}
+@media(prefers-reduced-motion:reduce){.game{transition:none}}
+</style>
+</head>
+<body><header><span aria-hidden="true" class="logo">+•</span><span class="brand">EVIL2D</span></header>
+<main><div class="intro"><h1>游戏厅</h1><span aria-hidden="true" class="dots"></span></div>
+<div class="library">
+<a class="game" href="/ratrat/" aria-label="进入鼠鼠大作战"><div class="cover mice"><img src="/ratrat/assets/squad/team.jpg" alt=""></div><div class="details"><h2>鼠鼠大作战</h2><p>一笔连起补给，带鼠鼠满载回洞。</p><span class="enter" aria-hidden="true">↗</span></div></a>
+<a class="game" href="/lane/" aria-label="进入极速换道"><div class="cover race"><img src="/arcade/lane-console.webp" alt=""></div><div class="details"><h2>极速换道</h2><p>左右换道，躲开来车，冲击最高分。</p><span class="enter" aria-hidden="true">↗</span></div></a>
+</div></main><footer>EVIL2D.COM</footer></body></html>

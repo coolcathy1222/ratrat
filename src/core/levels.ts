@@ -165,7 +165,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 3,
     theme: 'calico',
-    timeLimit: 72,
+    timeLimit: 42,
     hintLimit: 1,
     tip: '空白的地方跨不过去',
     start: { x: 5, y: 1 },
@@ -240,7 +240,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 4,
     theme: 'scarf',
-    timeLimit: 78,
+    timeLimit: 48,
     hintLimit: 1,
     tip: '石头挡路，岔路很多',
     start: { x: 3, y: 5 },
@@ -322,7 +322,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 5,
     theme: 'crown',
-    timeLimit: 82,
+    timeLimit: 52,
     hintLimit: 1,
     tip: '先看整盘，再下笔',
     start: { x: 5, y: 5 },
@@ -408,7 +408,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 6,
     theme: 'cream',
-    timeLimit: 90,
+    timeLimit: 60,
     hintLimit: 1,
     tip: '直路很短，别冲到头',
     start: { x: 3, y: 0 },
@@ -502,7 +502,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 7,
     theme: 'gray',
-    timeLimit: 94,
+    timeLimit: 64,
     hintLimit: 1,
     tip: '石头旁边常常是死路',
     start: { x: 6, y: 5 },
@@ -601,7 +601,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 8,
     theme: 'calico',
-    timeLimit: 96,
+    timeLimit: 66,
     hintLimit: 1,
     tip: '石头把路切开了',
     start: { x: 2, y: 4 },
@@ -700,7 +700,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 9,
     theme: 'scarf',
-    timeLimit: 100,
+    timeLimit: 70,
     hintLimit: 1,
     tip: '空格跨不过去',
     start: { x: 2, y: 6 },
@@ -803,7 +803,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 10,
     theme: 'crown',
-    timeLimit: 104,
+    timeLimit: 74,
     hintLimit: 1,
     tip: '鼠洞旁还有宝物，不要提前回家',
     start: { x: 2, y: 6 },
@@ -910,7 +910,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 11,
     theme: 'cream',
-    timeLimit: 108,
+    timeLimit: 78,
     hintLimit: 1,
     tip: '想清楚再拐弯',
     start: { x: 6, y: 6 },
@@ -1021,7 +1021,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 12,
     theme: 'gray',
-    timeLimit: 108,
+    timeLimit: 78,
     hintLimit: 1,
     tip: '格子多，别只顾着往前',
     start: { x: 6, y: 1 },
@@ -1133,7 +1133,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 13,
     theme: 'calico',
-    timeLimit: 112,
+    timeLimit: 82,
     hintLimit: 1,
     tip: '空白和石头都会挡路',
     start: { x: 2, y: 1 },
@@ -1248,7 +1248,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 14,
     theme: 'scarf',
-    timeLimit: 112,
+    timeLimit: 82,
     hintLimit: 1,
     tip: '一条直线走不远',
     start: { x: 6, y: 4 },
@@ -1364,7 +1364,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 15,
     theme: 'crown',
-    timeLimit: 116,
+    timeLimit: 86,
     hintLimit: 1,
     tip: '收齐每格的宝物，再进鼠洞',
     start: { x: 6, y: 0 },
@@ -1498,6 +1498,21 @@ const extraRoutes: Array<[number, number, string]> = [
   [0, 8, 'UUUUUUUURDDDRUUURRRRRDLLDRRDLLLUULDDDLLDRRRURRRDDDDLUUULDLLLLDRR'],
   [5, 7, 'RDRUULURULURUUULDDLUULLDRDDRDLLUULLURULLDDDDRURDDRRRDLDLULLDRDLL'],
   [7, 1, 'DDDLLDDRURDDDLULDLLLLLUUUURDDDRRRULLUUULLUUURRRDLLDRRDDDRUUUUURD'],
+  [7, 1, 'URDDDDLUULUULLLLDDLUULDDDDDDDDRRUUULURRUUURRDLDRDLDLDRDDRRRULURRUL'],
+  [2, 4, 'LLUURULURRRDDDDRRRDLLLLDDLLDRRRUURDRURRDLDRRUUULURUUUULLDDLUULDDDRRR'],
+  [1, 5, 'RUURRURDDDRURDDRUUULLUURRULLLLLLDRDLLLDRDLDDDDRRULURRDDRRRRRULLULLUULD'],
+  [1, 7, 'URRRDRRULURUURURDDLDRDLDDLLLLLLLUUUURDRRRUULDLULLUUURRRDLLDRRRRRURULLD'],
+  [8, 6, 'DDLLLURRUURUUUUULLLLLLDLULDDRRRURDDDDLUULLLDDDRDDRUURDRURRUURULURULLDDDD'],
+  [7, 7, 'URDDLLULDLUUURRRULURRUUULLDRDLLULDDRDLLUUUULLLDRRDDDDRDLDDLLURUUUUULDDDD'],
+  [7, 1, 'DDLULDDDRURDRUUUUULLDLULLLDDRRDLLDDRURDDRRRRDLLDLULDLLLLURRULLURULUUUURD'],
+  [6, 2, 'LLLDRRDDDDLLLURRULLULDDDDRRRRRUURDDRUUUULDLUURRULURULLDLULDLULDDDLUULDDDDD'],
+  [6, 2, 'RDRUUULDLULLLDLULLDRDLDRRURRURDDRDDDRURDDDLULDLLUULDDLLLUURULURRRURDRDLLLD'],
+  [1, 1, 'RRRRULLLLLDDDDRUURDDDLLDDDRUURDDRUUURRULLUURDRURUURRDLDRDLDRDLLDDRRDLLLUUL'],
+  [8, 2, 'DLUUULDDDDRDLDRDDRDLLLLLLULDLUUUURULURRRULLLUURDRRRURDDDDLDRDLLULDDRRRRDLLL'],
+  [3, 7, 'UULDDLDRRDLLLUUURUUULURULURRDRURRRRRDDDDLUUULDLULDDLLDRRRRDLLDRRRURDDLLDLDRRU'],
+  [2, 2, 'DLUURRRRDLLDRRRRDLLLLLLLUUUURRRRRRRRDLLDRRDDDDDLLDRRDLLLUULURULLDLULLDDDDRURDRU'],
+  [1, 1, 'RULLDDDDDRRDLLDDDRUURDDRRRRRRUUULDDLLLUURDRUURRUUULURULLLLLDDDLULDDRRRUUURRDLDDDL'],
+  [4, 5, 'RDLDDDRRRRULLLURRRUUULLURRULURULLLDDDDLLLDLUURUURDDRUUULLLLDRDLDDDDDDDRUUURDDDRUUUU'],
 ]
 for (const [startX, startY, route] of extraRoutes) {
   const solution = [{x: startX, y: startY}]
@@ -1507,7 +1522,7 @@ for (const [startX, startY, route] of extraRoutes) {
   }
   const id = LEVELS.length + 1
   LEVELS.push({id, theme: 'cream', start: solution[0], end: solution[solution.length - 1],
-    cells: rats(solution), solution, timeLimit: 120 + (id - 16) * 3, hintLimit: 2,
+    cells: rats(solution), solution, timeLimit: 90 + (id - 16) * 3, hintLimit: 2,
     tip: id % 5 === 0 ? '带上新伙伴，回洞后有机会入伙' : '先收齐宝物，再带着战利品回洞'})
 }
 

@@ -30,7 +30,7 @@ describe('burrow heists', () => {
         if(plan.guest) expect(save.dex[plan.guest]).toBe(0)
         for(const item of specials) if(item.kind==='good') {
           expect(GOODS[item.id][2]).toBeLessThanOrEqual(level.id)
-          if(roll > .99) expect(GOODS[item.id][2]).toBe(1+5*Math.floor((level.id-1)/5))
+          if(roll > .99) expect(GOODS[item.id][2]).toBe(Math.min(26, 1+5*Math.floor((level.id-1)/5)))
         }
       }
     }
@@ -42,9 +42,10 @@ describe('burrow heists', () => {
       const plan = planHeist(levelById(5),save.dex,()=>0)
       expect(save.stock).toEqual({})
       expect(save.lenses).toBe(0)
-      const haul = bankHeist(plan,save,()=>roll)
+      const rolls = [roll, .0, .0, .90]
+      const haul = bankHeist(plan,save,()=>rolls.shift() ?? .90)
       expect(save.stock).toEqual(haul.counts)
-      expect(haul.value).toBe(levelById(5).solution.length - 4)
+      expect(haul.value).toBe(levelById(5).solution.length - 5)
       expect(save.lenses).toBe(1)
       expect(save.dex.gray).toBe(roll < .25 ? 1 : 0)
       expect(haul.joined).toBe(roll < .25 ? plan.guest : null)

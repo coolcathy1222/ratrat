@@ -1,20 +1,21 @@
 import { planHeist, bankHeist, type Haul, type Heist } from '../core/heist'
 import { LEVEL_COUNT, levelById, type CellPos, type LevelDef } from '../core/levels'
 import { noteClear, shanghaiDate, type SaveData } from '../core/progress'
-import { extendStroke, hintNext, isStuck, isWon, minClearSeconds, ratCount, undoOne } from '../core/rules'
+import { extendStroke, hintSteps, sameCell, isStuck, isWon, minClearSeconds, ratCount, undoOne } from '../core/rules'
 import type { Platform, RewardSlot } from '../platform/types'
 import { AssetBook, type MakeSprite } from './assets'
+import { levelPhrase, recitalMs } from './mozart'
 import { Sfx } from './audio'
 import { PLAY_AREA, STAGE, boardGeom, cellRect } from './geom'
-import { ASCENT, celebrateMs, shellCueBetween } from './celebration'
-import { render, spawnSpan, type Frame, type Hot } from './render'
+import { celebrateMs, GATHER_MS, pocketOrder, POCKET_MS, shellCueBetween, waveStep } from './celebration'
+import { render, spawnDelay, spawnSpan, type Frame, type Hot } from './render'
 import { loadSave, storeSave } from './save'
 
 interface RewardPrompt {
   slot: RewardSlot
   title: string
   confirm: string
-  cell?: CellPos
+  steps?: CellPos[]
 }
 
 export interface AppOptions {
@@ -31,6 +32,7 @@ export class App {
   private readonly sfx: Sfx
   private save: SaveData
   private hots: Hot[] = []
+  private cottageAt = 0
   private screen: Frame['screen'] = 'home'
   private rankTab: Frame['rankTab'] = 'total'
   private detail: Frame['detail'] = null
@@ -50,7 +52,8 @@ export class App {
   private hidden = false
   private level: LevelDef = levelById(1)
   private path: CellPos[] = []
-  private hintCell: CellPos | null = null
+  private guidance: CellPos[] = []
+  private freeLens = false
   private hintLeft = 2
   private undoUsed = false
   private stuckOffered = false
@@ -58,10 +61,14 @@ export class App {
   private plan!: Heist
   private haul: Haul | null = null
   private dropReady = false
+  private fireworksAt = 0
   private dropAt = 0
   private won = false
+  private dropSlots: number[] = []
   private winAt = 0
   private spawnedAt = 0
+  private spawnCues: number[] = []
+  private spawnCue = 0
   private pops: Record<string, number> = {}
   private startedAt = 0
   private pausedAccum = 0
@@ -81,7 +88,7 @@ export class App {
     this.canvas = canvas
     this.platform = platform
     this.save = loadSave(platform)
-    this.sfx = new Sfx(() => options.readAudioFile(`${options.assetBase}/audio/field-burst.wav`), options.createAudioContext)
+    this.sfx = new Sfx(file => options.readAudioFile(`${options.assetBase}/audio/${file}`), options.createAudioContext)
     this.sfx.setEnabled(this.save.sound)
     void this.assets.load(options.assetBase, options.makeImage)
   }
@@ -146,17 +153,39 @@ export class App {
     this.lastFrame = now
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 3.2)
     if (this.toastUntil && now > this.toastUntil) this.toastText = ''
-    if (this.screen === 'play' && this.won && !this.dropReady && now - this.winAt > celebrateMs(this.path.length)) {
-      this.dropReady = true
-      this.dropAt = now
-      this.sfx.cheer()
-      this.pause()
+    if (this.screen === 'play' && !this.won && this.spawnCue < this.spawnCues.length) {
+      const age = now - this.spawnedAt
+      const first = this.spawnCue
+      while (this.spawnCue < this.spawnCues.length && this.spawnCues[this.spawnCue] <= age) this.spawnCue++
+      if (!this.hidden && !this.settingsOpen) {
+        for (let cue = first; cue < this.spawnCue; cue++) {
+          if (age - this.spawnCues[cue] < 180) this.sfx.tileBloom(cue, 'arrival')
+        }
+      }
+    }
+    if (this.screen === 'play' && !this.hidden && this.won && !this.dropReady) {
+      const gap = waveStep(this.path.length)
+      const bloom = Math.floor((now-this.winAt)/gap)
+      if (bloom >= 0 && bloom < this.path.length &&
+          Math.floor((previousFrame-this.winAt)/gap) < bloom && now-previousFrame < 250) {
+        this.sfx.tileBloom(bloom)
+      }
+      const pocketAt = this.winAt + celebrateMs(this.path.length)
+      const age = now - pocketAt
+      if (age >= POCKET_MS) {
+        this.dropReady = true
+        this.dropAt = now
+        this.fireworksAt = now + recitalMs(levelPhrase(this.level.id))
+        this.sfx.cheer(this.level.id)
+        this.pause()
+      } else if (previousFrame < pocketAt + GATHER_MS && age >= GATHER_MS) {
+        this.sfx.pocketPop()
+      }
     }
     if (this.screen === 'play' && this.dropReady && !this.hidden && now - previousFrame < 250) {
-      const previous = previousFrame - this.dropAt
-      const current = now - this.dropAt
-      if (shellCueBetween(previous, current, 'launch')) this.sfx.launch(ASCENT)
-      if (shellCueBetween(previous, current, 'burst')) this.sfx.firework()
+      const previous = previousFrame - this.fireworksAt
+      const current = now - this.fireworksAt
+      if (shellCueBetween(previous, current)) this.sfx.launch()
     }
     if (this.screen === 'play' && !this.won && this.timeLimit != null && !this.blocking()) {
       const left = this.remaining()
@@ -232,12 +261,15 @@ export class App {
   }
 
   private startLevel(id: number): void {
+    this.sfx.stopFireworks()
     this.level = levelById(id)
+    this.sfx.prepareRecital(this.level.id)
     this.plan = planHeist(this.level, this.save.dex)
     this.screen = 'play'
     this.path = []
-    this.hintCell = null
-    this.hintLeft = this.level.hintLimit
+    this.guidance = []
+    this.freeLens = this.plan.thief === 'gray'
+    this.hintLeft = this.level.hintLimit + Number(this.freeLens)
     this.undoUsed = false
     this.stuckOffered = false
     this.extraUsed = false
@@ -252,9 +284,7 @@ export class App {
     this.stuckOpen = false
     this.detail = null
     this.drawing = false
-    this.spawnedAt = performance.now()
-    this.pops = {}
-    this.startedAt = this.spawnedAt + spawnSpan(this.level)
+    this.beginAppearance()
     this.pausedAccum = 0
     this.pauseStarted = 0
     this.timeLimit = this.level.timeLimit
@@ -263,18 +293,29 @@ export class App {
     this.lastError = ''
   }
 
+  private beginAppearance(): void {
+    this.spawnedAt = performance.now()
+    this.pops = {}
+    this.startedAt = this.spawnedAt + spawnSpan(this.level)
+    this.spawnCue = 0
+    this.spawnCues = []
+    const delays = this.level.cells.map(cell => spawnDelay(this.level, cell)).sort((a,b) => a-b)
+    // Nearby tiles spring up together. Give each audible wave one voice.
+    for (const delay of delays) {
+      if (!this.spawnCues.length || delay - this.spawnCues[this.spawnCues.length-1] >= 85) this.spawnCues.push(delay)
+    }
+  }
+
   private resetPath(): void {
     this.path = []
-    this.hintCell = null
+    this.guidance = []
     this.won = false
     this.winAt = 0
     this.dropReady = false
     this.dropAt = 0
     this.haul = null
     this.drawing = false
-    this.spawnedAt = performance.now()
-    this.pops = {}
-    this.startedAt = this.spawnedAt + spawnSpan(this.level)
+    this.beginAppearance()
     this.pausedAccum = 0
     this.pauseStarted = 0
     this.timeLimit = this.level.timeLimit
@@ -288,6 +329,7 @@ export class App {
   }
 
   private goHome(): void {
+    this.sfx.stopFireworks()
     this.screen = 'home'
     this.settingsOpen = false
     this.reward = null
@@ -314,7 +356,6 @@ export class App {
     this.won = true
     this.drawing = false
     this.winAt = performance.now()
-    this.sfx.win()
     const count = ratCount(this.level)
     this.refreshDay()
     if (this.elapsed() >= minClearSeconds(count)) {
@@ -323,6 +364,8 @@ export class App {
       this.platform.submitScore(this.save.totalRats, this.save.dailyRats, this.save.dailyDate)
     }
     this.haul = bankHeist(this.plan, this.save)
+    if (this.plan.thief === 'gray') this.haul.talent = this.freeLens ? '随身探路镜 · 本关获赠 1 次指引，未使用' : '随身探路镜 · 已免费使用 1 次指引'
+    this.dropSlots = pocketOrder(this.level.cells.length)
     noteClear(this.save, this.level.id)
     this.persist()
   }
@@ -351,11 +394,13 @@ export class App {
       for (let i = before; i < result.path.length; i++) {
         const added = result.path[i]
         this.pops[`${added.x},${added.y}`] = now + (i - before) * 120
-        this.sfx.connect(i, (i - before) * 0.12)
+        this.sfx.connect(this.level.id, i, (i - before) * 0.12)
       }
       this.platform.vibrate()
-      if (this.hintCell && this.path.some((item) => item.x === this.hintCell?.x && item.y === this.hintCell?.y)) {
-        this.hintCell = null
+      for (const cell of this.path.slice(before)) {
+        if (!this.guidance.length || sameCell(cell, this.level.start)) continue
+        if (sameCell(cell, this.guidance[0])) this.guidance.shift()
+        else this.guidance = []
       }
       if (isWon(this.level, this.path)) this.onWin()
       else if (!this.undoUsed && !this.stuckOffered && isStuck(this.level, this.path)) {
@@ -474,6 +519,11 @@ export class App {
       this.openRank('daily')
       return
     }
+    if (id === 'cottage') {
+      this.cottageAt = performance.now()
+      this.screen = 'cottage'
+      return
+    }
     if (id === 'warehouse') { this.screen = 'warehouse'; return }
     if (id === 'dex') {
       this.screen = 'dex'
@@ -554,24 +604,21 @@ export class App {
 
   private async askHint(): Promise<void> {
     if (this.won) return
-    if (this.hintLeft <= 0) {
-      this.toast('这关的提示用完了')
-      return
-    }
-    const next = hintNext(this.level, this.path)
-    if (!next) {
-      this.toast('这条线走偏了，重置后才能提示')
-      return
-    }
-    if (this.save.lenses > 0) {
-      this.save.lenses--
-      this.hintCell = next
+    if (this.guidance.length) { this.toast('沿编号走完当前指引'); return }
+    if (this.path.length === ratCount(this.level) - 1) { this.toast('补给已收齐，下一步回洞'); return }
+    if (this.hintLeft <= 0) { this.toast('这关的提示用完了'); return }
+    const steps = hintSteps(this.level, this.path)
+    if (!steps.length) { this.toast('这条路线无法走通，重置后再试'); return }
+    if (this.freeLens || this.save.lenses > 0) {
+      if (this.freeLens) this.freeLens = false
+      else this.save.lenses--
+      this.guidance = steps
       this.hintLeft--
       this.persist()
-      this.toast('探路镜照亮了下一格')
+      this.toast(`探路镜标出了接下来的 ${steps.length} 步`)
       return
     }
-    this.reward = { slot: 'hint', title: '看广告获得提示', confirm: '观看', cell: next }
+    this.reward = {slot: 'hint', title: '看广告获得五步指引', confirm: '观看', steps}
     this.pause()
   }
 
@@ -603,21 +650,22 @@ export class App {
     } finally {
       this.busy = false
     }
+    if (this.reward !== reward) return
     this.reward = null
     if (!ok) {
       this.toast('这次没有获得')
       this.resumeIfClear()
       return
     }
-    if (reward.slot === 'hint' && reward.cell) {
+    if (reward.slot === 'hint' && reward.steps) {
       this.hintLeft -= 1
-      this.hintCell = reward.cell
-      this.toast('下一格亮出来了')
+      this.guidance = reward.steps
+      this.toast(`沿编号前进 ${reward.steps.length} 步`)
     } else if (reward.slot === 'undo') {
       this.path = undoOne(this.path)
       this.undoUsed = true
       this.stuckOpen = false
-      this.hintCell = null
+      this.guidance = []
       this.lastCell = ''
     } else if (reward.slot === 'time') {
       this.timeLimit = this.elapsed() + 30
@@ -655,6 +703,7 @@ export class App {
       save: this.save,
       pressed: this.pressed,
       screen: this.screen,
+      cottageAt: this.cottageAt,
       rankTab: this.rankTab,
       detail: this.detail,
       shared: this.screen === 'rank' ? this.platform.sharedCanvas() : null,
@@ -666,7 +715,8 @@ export class App {
           ? {
               level: this.level,
               path: this.path,
-              hintCell: this.hintCell,
+              guidance: this.guidance,
+              freeLens: this.freeLens,
               hintLeft: this.hintLeft,
               remaining: this.timeLimit == null ? null : this.remaining(),
               shake: this.shake,
@@ -674,10 +724,12 @@ export class App {
               winAt: this.winAt,
               showDrop: this.dropReady,
               dropAt: this.dropAt,
+              fireworksAt: this.fireworksAt,
               plan: this.plan,
               haul: this.haul,
               spawnAt: this.spawnedAt,
               pops: this.pops,
+              dropSlots: this.dropSlots,
             }
           : null,
       reward: this.reward ? { title: this.reward.title, confirm: this.reward.confirm } : null,
