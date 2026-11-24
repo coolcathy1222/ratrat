@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { celebrateMs, GATHER_MS, POCKET_MS, POCKET_MOUTH, pocketPosition, pocketOrder, pulsePhase, shellCueBetween, waveDelay } from './celebration'
+import { bagPose, CLOSE_AT, FLIGHT_MS, STAGGER_MS, celebrateMs, POCKET_MS, POCKET_MOUTH, pocketPosition, pocketOrder, pulsePhase, shellCueBetween, waveDelay } from './celebration'
 
 it('spaces successive tiles evenly and slows each individual bloom near its end', () => {
   const count = 73
@@ -23,12 +23,18 @@ it('assigns each tile one distinct drop slot and starts the shells after the che
   expect(shellCueBetween(-1, 0)).toBe(true)
 })
 
-it('gathers the tiles at screen center, scatters them and finishes inside the pocket', () => {
-  for (const slot of [0, 5, 15]) {
-    const pose = (age: number) => pocketPosition(age,slot,16,150,240,60)
-    expect(pose(0)).toMatchObject({x:150,y:240,landed:false})
-    expect(pose(GATHER_MS)).toMatchObject({x:360,y:640,landed:false})
-    expect(Math.abs(pose(GATHER_MS+650).x-360)).toBeGreaterThan(8)
-    expect(pose(POCKET_MS)).toMatchObject({x:POCKET_MOUTH.x,y:POCKET_MOUTH.y+60,landed:true})
+it('scatters from each tile’s own cell before closing and carrying the bag offstage', () => {
+  for (const slot of [0,5,15]) {
+    const x=100+slot*26, y=240+slot*17
+    const pose=(age: number) => pocketPosition(age,slot,16,x,y,60)
+    const launch=STAGGER_MS*slot/15
+    expect(pose(launch)).toMatchObject({x,y,landed:false})
+    expect(pose(launch+130).y).toBeLessThan(y)
+    expect(pose(launch+FLIGHT_MS)).toMatchObject({x:POCKET_MOUTH.x,y:POCKET_MOUTH.y+60,landed:true})
   }
+  expect(bagPose(CLOSE_AT)).toMatchObject({close:0,lift:0})
+  expect(bagPose(CLOSE_AT+400).close).toBeGreaterThan(.8)
+  expect(bagPose(POCKET_MS)).toMatchObject({close:1,lift:1})
+  expect(bagPose(POCKET_MS).x).toBeGreaterThan(810)
+  expect(bagPose(POCKET_MS).heroX).toBeGreaterThan(810)
 })

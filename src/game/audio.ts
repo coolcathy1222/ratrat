@@ -134,7 +134,7 @@ export class Sfx {
     }
   }
 
-  cheer(level: number): void {
+  playRecital(level: number): void {
     const ctx = this.ctx
     if (!this.enabled || !this.visible || !ctx || !this.master) return
     const now = ctx.currentTime
@@ -181,10 +181,23 @@ export class Sfx {
       gain.setTargetAtTime(.001,now,.04)
       gain.setTargetAtTime(.2,now+recitalMs(phrase)/1000,.10)
     }
+  }
+
+  cheer(): number {
+    const pitches = [260, 322, 213, 380, 291, 238]
+    const endOffset = (i: number) => i*.052 + .56 + (i%3)*.11
+    const durationMs = Math.ceil(endOffset(pitches.length-1)*1000)
+    const ctx = this.ctx
+    if (!this.enabled || !this.visible || !ctx || !this.master) return durationMs
+    const now = ctx.currentTime
+    this.recitalBus?.disconnect()
+    const bus = ctx.createGain()
+    bus.connect(this.master)
+    this.recitalBus = bus
     // A little crowd singing "woo!" with staggered voices and moving vowel formants.
-    for (const [i, pitch] of [260, 322, 213, 380, 291, 238].entries()) {
+    for (const [i, pitch] of pitches.entries()) {
       const t = now + i * .052
-      const end = t + .56 + i % 3 * .11
+      const end = now + endOffset(i)
       const voice = ctx.createOscillator()
       voice.type = 'sawtooth'
       voice.frequency.setValueAtTime(pitch * .85, t)
@@ -205,7 +218,7 @@ export class Sfx {
       voice.start(t)
       voice.stop(end)
     }
-
+    return durationMs
   }
 
   private async loadBurst(ctx: AudioContext): Promise<void> {

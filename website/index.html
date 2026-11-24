@@ -29,6 +29,9 @@ h1{margin:0;font-size:clamp(38px,5.2vw,66px);letter-spacing:-.075em;line-height:
 h2{font-size:clamp(22px,2.3vw,32px);margin:0;letter-spacing:-.045em;line-height:1.2}
 p{margin:0;color:#55594c;font-size:15px;line-height:1.6}
 .enter{grid-area:1/2/3/3;border:1.5px solid currentColor;border-radius:50%;width:40px;height:40px;display:grid;place-items:center;font:24px/1 sans-serif}
+.enter::before,.enter::after{content:"";grid-area:1/1;display:block}
+.enter::before{width:16px;height:1.6px;background:currentColor;transform:rotate(-45deg)}
+.enter::after{width:9px;height:9px;border-top:1.6px solid;border-right:1.6px solid;transform:translate(2px,-2px)}
 .game:hover .enter,.game:focus-visible .enter{background:var(--ink);color:var(--paper)}
 footer{margin-top:44px;border-top:1px solid #b5b5a5;padding:16px 0 26px;font:600 12px/1.5 ui-monospace,monospace;color:#626557;letter-spacing:.035em}
 @media(max-width:680px){main,header,footer{width:calc(100% - 36px)}header{height:58px}.brand{font-size:20px}.logo{width:29px;height:25px}.intro{margin:24px 0 19px}.dots{width:69px;height:19px}.library{grid-template-columns:1fr;gap:19px}.cover{aspect-ratio:2.3}.details{padding:15px 17px;gap:4px 8px}.enter{width:35px;height:35px}p{font-size:14px}footer{margin-top:26px}}
@@ -38,6 +41,6 @@ footer{margin-top:44px;border-top:1px solid #b5b5a5;padding:16px 0 26px;font:600
 <body><header><span aria-hidden="true" class="logo">+•</span><span class="brand">EVIL2D</span></header>
 <main><div class="intro"><h1>游戏厅</h1><span aria-hidden="true" class="dots"></span></div>
 <div class="library">
-<a class="game" href="/ratrat/" aria-label="进入鼠鼠大作战"><div class="cover mice"><img src="/ratrat/assets/squad/team.jpg" alt=""></div><div class="details"><h2>鼠鼠大作战</h2><p>一笔连起补给，带鼠鼠满载回洞。</p><span class="enter" aria-hidden="true">↗</span></div></a>
-<a class="game" href="/lane/" aria-label="进入极速换道"><div class="cover race"><img src="/arcade/lane-console.webp" alt=""></div><div class="details"><h2>极速换道</h2><p>左右换道，躲开来车，冲击最高分。</p><span class="enter" aria-hidden="true">↗</span></div></a>
+<a class="game" href="/ratrat/" aria-label="进入鼠鼠大作战"><div class="cover mice"><img src="/ratrat/web-art/squad/team.webp" alt=""></div><div class="details"><h2>鼠鼠大作战</h2><p>一笔连起补给，带鼠鼠满载回洞。</p><span class="enter" aria-hidden="true"></span></div></a>
+<a class="game" href="/lane/" aria-label="进入极速换道"><div class="cover race"><img src="/arcade/lane-console.webp" alt=""></div><div class="details"><h2>极速换道</h2><p>左右换道，躲开来车，冲击最高分。</p><span class="enter" aria-hidden="true"></span></div></a>
 </div></main><footer>EVIL2D.COM</footer></body></html>

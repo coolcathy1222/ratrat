@@ -1,34 +1,55 @@
 import { STAGE } from './geom'
 
 const TILE_MS = 1760
-export const GATHER_MS = 420
 export const STAGGER_MS = 520
 export const FLIGHT_MS = 1340
-export const POCKET_MS = GATHER_MS + STAGGER_MS + FLIGHT_MS + 390
+export const CLOSE_AT = STAGGER_MS + FLIGHT_MS + 100
+const CINCH_MS = 510
+const SHOULDER_MS = 420
+const WALK_MS = 1150
+export const POCKET_MS = CLOSE_AT + CINCH_MS + SHOULDER_MS + WALK_MS
 export const POCKET_MOUTH = {x: 360, y: 1015}
 
-export function pocketPosition(age: number, slot: number, count: number, x: number, y: number, size: number) {
-  const centerX = STAGE.w / 2
-  const centerY = STAGE.h / 2
-  const gather = Math.min(1, Math.max(0, age / GATHER_MS))
-  const pull = gather * gather * (3 - 2 * gather)
-  const travel = Math.max(0, age - GATHER_MS - STAGGER_MS * slot / Math.max(1, count - 1)) / FLIGHT_MS
-  if (!travel) return {x: x + (centerX-x)*pull, y: y + (centerY-y)*pull, angle: 0, landed: false}
+function smooth(t: number): number {
+  const u = Math.max(0, Math.min(1,t))
+  return u*u*(3-2*u)
+}
 
-  const t = Math.min(1, travel)
-  const angle = slot * 2.39996
-  const spread = 241 + 101 * (.5 + .5 * Math.sin(slot * 13.17))
-  // The radial impulse peaks early, then gravity pulls the intact tile into the bag.
-  const arc = 9.48 * t * (1-t) ** 3
+export function bagPose(age: number, musicMs = POCKET_MS-CLOSE_AT) {
+  const close = smooth((age-CLOSE_AT)/CINCH_MS)
+  const lift = smooth((age-CLOSE_AT-CINCH_MS)/SHOULDER_MS)
+  const walkMs = Math.max(WALK_MS,musicMs-CINCH_MS-SHOULDER_MS)
+  const walk = Math.max(0, Math.min(1,(age-CLOSE_AT-CINCH_MS-SHOULDER_MS)/walkMs))
+  const steps = Math.round(walkMs/195)
+  const stride = Math.sin(walk*Math.PI*steps)
+  const step = Math.abs(stride)
+  const dx = walk*walk*(2-walk)*510
   return {
-    x: centerX + Math.cos(angle) * Math.min(spread, centerX-size/2) * arc,
-    y: centerY + Math.sin(angle) * spread * 1.05 * arc + (POCKET_MOUTH.y + size - centerY) * t * t,
-    angle: Math.sin(angle + .6) * .98 * Math.sin(Math.PI * t),
-    landed: travel >= 1,
+    close, lift, stride,
+    x: POCKET_MOUTH.x+dx+lift*21, y: POCKET_MOUTH.y+175*(1-smooth(age/270))-lift*8-step*10,
+    scale: 1-.55*lift,
+    heroX: 845-402*smooth((age-CLOSE_AT+150)/660)+dx,
+    heroY: 1148-step*10+Math.sin(lift*Math.PI)*12,
+  }
+}
+
+export function pocketPosition(age: number, slot: number, count: number, x: number, y: number, size: number) {
+  const t = Math.max(0, Math.min(1,(age-STAGGER_MS*slot/Math.max(1,count-1))/FLIGHT_MS))
+  const side = Math.cos(slot*2.4)
+  const impulse = (x-STAGE.w/2)*.48 + side*93
+  const arc = 7*t*(1-t)**3
+  const fall = t*t
+  const dx = Math.max(size/2-x,Math.min(STAGE.w-size/2-x,impulse))
+  return {
+    x: x+(POCKET_MOUTH.x-x)*fall+dx*arc,
+    y: y+(POCKET_MOUTH.y+size-y)*fall-(95+58*Math.abs(side))*arc,
+    angle: Math.sin(slot*2.4+.6)*.95*Math.sin(Math.PI*t),
+    landed: t>=1,
+    flash: t>0 && t<.2 ? Math.sin(t/.2*Math.PI) : 0,
   }
 }
 export function waveStep(count: number): number {
-  return Math.min(165, 4300 / Math.max(1, count - 1))
+  return Math.min(145, 3780 / Math.max(1, count - 1))
 }
 
 export function waveDelay(index: number, count: number): number {

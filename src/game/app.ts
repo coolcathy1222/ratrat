@@ -1,3 +1,4 @@
+import { SPECIES_IDS } from '../core/species'
 import { planHeist, bankHeist, type Haul, type Heist } from '../core/heist'
 import { LEVEL_COUNT, levelById, type CellPos, type LevelDef } from '../core/levels'
 import { noteClear, shanghaiDate, type SaveData } from '../core/progress'
@@ -7,7 +8,7 @@ import { AssetBook, type MakeSprite } from './assets'
 import { levelPhrase, recitalMs } from './mozart'
 import { Sfx } from './audio'
 import { PLAY_AREA, STAGE, boardGeom, cellRect } from './geom'
-import { celebrateMs, GATHER_MS, pocketOrder, POCKET_MS, shellCueBetween, waveStep } from './celebration'
+import { celebrateMs, CLOSE_AT, pocketOrder, shellCueBetween, waveStep } from './celebration'
 import { render, spawnDelay, spawnSpan, type Frame, type Hot } from './render'
 import { loadSave, storeSave } from './save'
 
@@ -19,6 +20,7 @@ interface RewardPrompt {
 }
 
 export interface AppOptions {
+  webArt?: string
   assetBase: string
   createAudioContext?: () => AudioContext
   readAudioFile: (path: string) => Promise<ArrayBuffer>
@@ -28,7 +30,7 @@ export interface AppOptions {
 export class App {
   private readonly canvas: HTMLCanvasElement
   private readonly platform: Platform
-  private readonly assets = new AssetBook()
+  private readonly assets: AssetBook
   private readonly sfx: Sfx
   private save: SaveData
   private hots: Hot[] = []
@@ -61,6 +63,7 @@ export class App {
   private plan!: Heist
   private haul: Haul | null = null
   private dropReady = false
+  private recitalEndsAt = 0
   private fireworksAt = 0
   private dropAt = 0
   private won = false
@@ -90,7 +93,8 @@ export class App {
     this.save = loadSave(platform)
     this.sfx = new Sfx(file => options.readAudioFile(`${options.assetBase}/audio/${file}`), options.createAudioContext)
     this.sfx.setEnabled(this.save.sound)
-    void this.assets.load(options.assetBase, options.makeImage)
+    this.assets = new AssetBook(options.assetBase, options.makeImage, options.webArt)
+    void this.assets.loadHome()
   }
 
   resize(cssW: number, cssH: number, dpr: number): void {
@@ -172,14 +176,16 @@ export class App {
       }
       const pocketAt = this.winAt + celebrateMs(this.path.length)
       const age = now - pocketAt
-      if (age >= POCKET_MS) {
+      if (previousFrame < pocketAt && age >= 0 && age < CLOSE_AT) this.sfx.pocketPop()
+      if (age >= CLOSE_AT && !this.recitalEndsAt) {
+        this.sfx.playRecital(this.level.id)
+        this.recitalEndsAt = now + recitalMs(levelPhrase(this.level.id))
+      }
+      if (this.recitalEndsAt && now >= this.recitalEndsAt) {
         this.dropReady = true
         this.dropAt = now
-        this.fireworksAt = now + recitalMs(levelPhrase(this.level.id))
-        this.sfx.cheer(this.level.id)
+        this.fireworksAt = now + this.sfx.cheer() + 25
         this.pause()
-      } else if (previousFrame < pocketAt + GATHER_MS && age >= GATHER_MS) {
-        this.sfx.pocketPop()
       }
     }
     if (this.screen === 'play' && this.dropReady && !this.hidden && now - previousFrame < 250) {
@@ -265,6 +271,7 @@ export class App {
     this.level = levelById(id)
     this.sfx.prepareRecital(this.level.id)
     this.plan = planHeist(this.level, this.save.dex)
+    this.assets.loadPlay(this.plan.thief, this.plan.guest)
     this.screen = 'play'
     this.path = []
     this.guidance = []
@@ -356,6 +363,7 @@ export class App {
     this.won = true
     this.drawing = false
     this.winAt = performance.now()
+    this.recitalEndsAt = 0
     const count = ratCount(this.level)
     this.refreshDay()
     if (this.elapsed() >= minClearSeconds(count)) {
@@ -487,6 +495,7 @@ export class App {
       return
     }
     if (id === 'settings') {
+      void this.assets.scene('nap')
       this.settingsOpen = true
       this.pause()
       return
@@ -521,11 +530,18 @@ export class App {
     }
     if (id === 'cottage') {
       this.cottageAt = performance.now()
+      this.assets.loadRoom(SPECIES_IDS.filter(id => this.save.dex[id] > 0))
       this.screen = 'cottage'
       return
     }
-    if (id === 'warehouse') { this.screen = 'warehouse'; return }
+    if (id === 'warehouse') {
+      void this.assets.scene('snack')
+      void this.assets.scene('supplies')
+      this.screen = 'warehouse'
+      return
+    }
     if (id === 'dex') {
+      this.assets.loadDex()
       this.screen = 'dex'
       this.detail = null
       return

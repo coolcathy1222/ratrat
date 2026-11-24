@@ -9,8 +9,9 @@ import { ink, muted, accent, paper, edge, berry, label, mark, flower, page, rule
 
 import { CHESTS, RELICS, GOODS, GOOD_IDS, TOOL, type Heist, type Haul } from '../core/heist'
 import { cottageResidents } from './cottage'
+import { levelPhrase, recitalMs } from './mozart'
 import { lootArt } from './loot-art'
-import { GATHER_MS, POCKET_MOUTH, pocketPosition, nightSky, pulsePhase, tileSparks, waveDelay, celebrateMs } from './celebration'
+import { bagPose, CLOSE_AT, pocketPosition, nightSky, pulsePhase, tileSparks, waveDelay, celebrateMs } from './celebration'
 
 export interface Hot extends Rect {
   id: string
@@ -309,32 +310,57 @@ function traceRibbon(ctx: CanvasRenderingContext2D, centers: Array<{ x: number; 
   ctx.lineTo(last.x, last.y)
 }
 
-function pocket(ctx: CanvasRenderingContext2D, age: number, front: boolean): void {
-  const enter = Math.min(1, age / 260)
-  const bounce = Math.sin(age / 70) * Math.sin(Math.PI * Math.min(1, age / 2000))
+function pocket(frame: Frame, age: number, front: boolean): void {
+  const ctx = frame.ctx
+  const pose = bagPose(age,recitalMs(levelPhrase(frame.play!.level.id)))
+  const mouth = 91-78*pose.close
+  const bounce = age < CLOSE_AT ? Math.sin(age/70)*Math.sin(Math.PI*age/CLOSE_AT) : 0
   ctx.save()
-  ctx.translate(POCKET_MOUTH.x, POCKET_MOUTH.y + 190 * (1 - enter) ** 2)
-  ctx.scale(1 + bounce * .018, 1 - bounce * .028)
+  ctx.translate(pose.x,pose.y)
+  ctx.rotate(-pose.lift*.26+pose.stride*.06)
+  ctx.scale(pose.scale*(1+bounce*.018),pose.scale*(1-bounce*.028))
   ctx.lineWidth = 5
   ctx.strokeStyle = '#604638'
   ctx.fillStyle = front ? '#DBA569' : '#5B423A'
   ctx.beginPath()
   if (front) {
-    ctx.moveTo(-91, 0)
-    ctx.bezierCurveTo(-49, 17, 47, 17, 91, 0)
-    ctx.bezierCurveTo(89, 32, 132, 65, 115, 113)
-    ctx.bezierCurveTo(99, 158, -93, 162, -114, 115)
-    ctx.bezierCurveTo(-135, 76, -96, 33, -91, 0)
-  } else ctx.ellipse(0, 0, 91, 21, 0, 0, 2 * Math.PI)
+    ctx.moveTo(-mouth,0)
+    ctx.bezierCurveTo(-mouth*.55,17-12*pose.close,mouth*.55,17-12*pose.close,mouth,0)
+    ctx.bezierCurveTo(mouth+3,34,132,65,115,113)
+    ctx.bezierCurveTo(99,158,-93,162,-114,115)
+    ctx.bezierCurveTo(-135,76,-mouth-4,33,-mouth,0)
+  } else ctx.ellipse(0,0,mouth,21-17*pose.close,0,0,2*Math.PI)
   ctx.fill(); ctx.stroke()
   if (front) {
-    stitches(ctx, {x: -62, y: 50, w: 124, h: 64}, 19, '#92663F')
-    mark(ctx, 'paw', 0, 82, 1.25, '#8F633E')
-    ctx.strokeStyle = '#EFD49E'
-    ctx.lineWidth = 7
-    ctx.beginPath(); ctx.moveTo(-84, 18); ctx.quadraticCurveTo(0, 44, 85, 18); ctx.stroke()
+    stitches(ctx,{x:-62,y:50,w:124,h:64},19,'#92663F')
+    mark(ctx,'paw',0,82,1.25,'#8F633E')
+    ctx.strokeStyle='#F5DB9C'
+    ctx.lineWidth=7
+    ctx.beginPath(); ctx.moveTo(-mouth+3,14); ctx.quadraticCurveTo(0,39-22*pose.close,mouth-3,14); ctx.stroke()
+    if (pose.close>0) {
+      ctx.strokeStyle='#976239'
+      ctx.lineWidth=4
+      for (const side of [-1,1]) {
+        ctx.beginPath(); ctx.moveTo(side*mouth*.45,16)
+        ctx.quadraticCurveTo(side*(mouth+18*pose.close),10,side*(mouth+34*pose.close),27)
+        ctx.stroke()
+      }
+    }
   }
   ctx.restore()
+  if (front && age>CLOSE_AT-150) {
+    const hero = frame.play!.plan.thief
+    ctx.save()
+    ctx.translate(pose.heroX,pose.heroY)
+    ctx.rotate(pose.stride*.045+pose.lift*.04)
+    paintHead(ctx, frame.assets.calm[hero],SPECIES_COLOR[hero],-76,-154,152,154)
+    if (pose.lift>0) {
+      ctx.globalAlpha=pose.lift
+      ctx.strokeStyle='#965E38'; ctx.lineWidth=5; ctx.lineCap='round'
+      ctx.beginPath();ctx.moveTo(-53,-107);ctx.quadraticCurveTo(-30,-101,-14,-76);ctx.stroke()
+    }
+    ctx.restore()
+  }
 }
 
 function drawBoard(
@@ -354,7 +380,7 @@ function drawBoard(
   const ready = path.filter((cell) => appearScale(frame.now, opts.spawnAt, spawnDelay(level, cell)) >= 0.98)
   ctx.save()
   ctx.translate(ox, 0)
-  if (pocketAge >= 0) pocket(ctx, pocketAge, false)
+  if (pocketAge >= 0) pocket(frame, pocketAge, false)
   if (ready.length > 1 && pocketAge < 0) {
     const centers = ready.map((cell) => cellCenter(geom, cell))
     const width = Math.max(18, geom.cell * 0.22)
@@ -372,9 +398,6 @@ function drawBoard(
     ctx.lineWidth = width * .48
     ctx.stroke()
     ctx.restore()
-  }
-  if (pocketAge >= GATHER_MS && pocketAge < GATHER_MS + 700) {
-    tileSparks(ctx, STAGE.w / 2, STAGE.h / 2, 155, (pocketAge-GATHER_MS) / 700, .36, true)
   }
   for (const [cellIndex, cell] of level.cells.entries()) {
     const born = appearScale(frame.now, opts.spawnAt, spawnDelay(level, cell))
@@ -395,6 +418,20 @@ function drawBoard(
       const slot = frame.play!.dropSlots[cellIndex]
       const pos = pocketPosition(pocketAge, slot, level.cells.length, cx, cy, rect.w)
       if (pos.landed) { ctx.restore(); continue }
+      if (pos.flash>0) {
+        ctx.strokeStyle = '#FFE5A0'
+        ctx.lineWidth = Math.max(2,rect.w*.045)
+        ctx.globalAlpha = pos.flash
+        ctx.beginPath()
+        for (let ray=0; ray<5; ray++) {
+          const a = seed+ray*2*Math.PI/5
+          const r = rect.w*(.45+.22*pos.flash)
+          ctx.moveTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r)
+          ctx.lineTo(cx+Math.cos(a)*(r+rect.w*.17),cy+Math.sin(a)*(r+rect.w*.17))
+        }
+        ctx.stroke()
+        ctx.globalAlpha = 1
+      }
       ctx.translate(pos.x, pos.y)
       ctx.rotate(pos.angle)
       ctx.translate(-cx, -cy)
@@ -466,7 +503,7 @@ function drawBoard(
     ctx.restore()
     if (phase >= 0) bursts.push({ x: cx, y: cy - lift * rect.h * .2, phase, seed })
   }
-  if (pocketAge >= 0) pocket(ctx, pocketAge, true)
+  if (pocketAge >= 0) pocket(frame, pocketAge, true)
   for (const burst of bursts) tileSparks(ctx, burst.x, burst.y, geom.cell, burst.phase, burst.seed, opts.won)
   hints.forEach((hint, i) => {
     const rect = cellRect(geom, hint)
@@ -1057,7 +1094,7 @@ function drawToast(frame: Frame, text: string): void {
 }
 
 export function render(frame: Frame): void {
-  if (!frame.assets.ready || frame.now - frame.assets.openedAt < 1250) {
+  if (!frame.assets.ready) {
     const ctx = frame.ctx
     const elapsed = Math.max(0, frame.now - frame.assets.openedAt)
     const beat = Math.sin(elapsed / 205)

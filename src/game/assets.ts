@@ -16,45 +16,67 @@ export class AssetBook {
   readonly openedAt = performance.now()
   ready = false
 
-  async load(base: string, make: MakeSprite): Promise<void> {
-    const jobs: Promise<void>[] = []
-    for (const name of Object.keys(SCENES) as Array<keyof typeof SCENES>) {
-      jobs.push(this.loadSrc(`${base}/squad/${SCENES[name]}`, make).then(image => { this.scenes[name] = image }))
-    }
-    for (const id of SPECIES_IDS) {
-      for (const kind of ['calm', 'shadow'] as const) {
-        jobs.push(this.loadOne(`${base}/crew`, id, kind, make))
-      }
-    }
-    jobs.push(
-      this.loadSrc(`${base}/crew/cream-empty.png`, make).then(image => { this.creamEmpty = image }),
-      this.loadSrc(`${base}/heads/hole.png`, make).then((image) => {
-        if (image) this.hole = image
-      }),
-    )
-    let loaded = 0
-    await Promise.all(jobs.map(job => job.then(() => { this.progress = ++loaded / jobs.length })))
+  private requested = new Set<string>()
+
+  constructor(private base: string, private make: MakeSprite, private webArt?: string) {}
+
+  async loadHome(): Promise<void> {
+    void this.scene('assembly')
+    void this.scene('butterfly')
+    await this.scene('team')
+    this.progress = 1
     this.ready = true
   }
 
-  private loadSrc(src: string, make: MakeSprite): Promise<Sprite | undefined> {
-    return new Promise((resolve) => {
-      const image = make()
+  loadPlay(hero: Species, guest: Species | null): void {
+    void this.portrait(hero, 'calm')
+    if (guest) {
+      void this.portrait(guest, 'calm')
+      void this.portrait(guest, 'shadow')
+    }
+    void this.get('heads/hole.png', image => { this.hole = image })
+    void this.scene('suppliesPlain')
+    void this.scene('supplies')
+    void this.scene('lookout')
+  }
+
+  loadRoom(residents: Species[]): void {
+    void this.scene('cottage')
+    for (const id of residents) void this.portrait(id, 'calm')
+    void this.get('crew/cream-empty.png', image => { this.creamEmpty = image })
+    void this.scene('suppliesPlain')
+  }
+
+  loadDex(): void {
+    for (const id of SPECIES_IDS) {
+      void this.portrait(id, 'calm')
+      void this.portrait(id, 'shadow')
+    }
+  }
+
+  scene(name: keyof typeof SCENES): Promise<void> {
+    return this.get(`squad/${SCENES[name]}`, image => { this.scenes[name] = image })
+  }
+
+  private portrait(id: Species, kind: 'calm' | 'shadow'): Promise<void> {
+    return this.get(`crew/${id}-${kind}.png`, image => { this[kind][id] = image })
+  }
+
+  private async get(path: string, store: (image: Sprite) => void): Promise<void> {
+    if (this.requested.has(path)) return
+    this.requested.add(path)
+    const compact = this.webArt && await this.read(`${this.webArt}/${path.replace(/\.\w+$/, '.webp')}`)
+    const image = compact || await this.read(`${this.base}/${path}`)
+    if (image) store(image)
+    else this.requested.delete(path)
+  }
+
+  private read(src: string): Promise<Sprite | undefined> {
+    return new Promise(resolve => {
+      const image = this.make()
       image.onload = () => resolve(image.width > 0 ? image : undefined)
       image.onerror = () => resolve(undefined)
       image.src = src
-    })
-  }
-
-  private loadOne(base: string, id: Species, kind: 'calm' | 'shadow', make: MakeSprite): Promise<void> {
-    return new Promise((resolve) => {
-      const image = make()
-      image.onload = () => {
-        this[kind][id] = image
-        resolve()
-      }
-      image.onerror = () => resolve()
-      image.src = `${base}/${id}-${kind}.png`
     })
   }
 }
