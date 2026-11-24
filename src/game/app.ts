@@ -1,4 +1,4 @@
-import { SPECIES_IDS } from '../core/species'
+import { SPECIES_IDS, type Species } from '../core/species'
 import { planHeist, bankHeist, type Haul, type Heist } from '../core/heist'
 import { LEVEL_COUNT, levelById, type CellPos, type LevelDef } from '../core/levels'
 import { noteClear, shanghaiDate, type SaveData } from '../core/progress'
@@ -35,6 +35,7 @@ export class App {
   private save: SaveData
   private hots: Hot[] = []
   private cottageAt = 0
+  private loadingHero: Species | null = null
   private screen: Frame['screen'] = 'home'
   private rankTab: Frame['rankTab'] = 'total'
   private detail: Frame['detail'] = null
@@ -52,6 +53,7 @@ export class App {
   private lastError = ''
   private busy = false
   private hidden = false
+  private hiddenAt = 0
   private level: LevelDef = levelById(1)
   private path: CellPos[] = []
   private guidance: CellPos[] = []
@@ -130,10 +132,25 @@ export class App {
   }
 
   setHidden(hidden: boolean): void {
-    this.hidden = hidden
     this.sfx.setVisible(!hidden)
-    if (hidden) this.pause()
-    else this.resumeIfClear()
+    if (this.hidden === hidden) return
+    this.hidden = hidden
+    const now = performance.now()
+    if (hidden) {
+      this.hiddenAt = now
+      this.pause()
+      return
+    }
+    if (this.screen === 'play' && this.won) {
+      const away = now-this.hiddenAt
+      this.winAt += away
+      if (this.recitalEndsAt) this.recitalEndsAt += away
+      if (this.dropReady) {
+        this.dropAt += away
+        this.fireworksAt += away
+      }
+    }
+    this.resumeIfClear()
   }
 
   pointer(type: 'down' | 'move' | 'up', cssX: number, cssY: number): void {
@@ -266,12 +283,22 @@ export class App {
     this.toastUntil = performance.now() + 1700
   }
 
-  private startLevel(id: number): void {
+  private async openScene(load: () => Promise<boolean>, hero: Species | null = null): Promise<boolean> {
+    this.loadingHero = hero
+    this.screen = 'loading'
+    this.hots = []
+    if (await load() || await load()) return true
+    this.goHome()
+    this.toast('图片加载失败，请检查网络后再试')
+    return false
+  }
+
+  private async startLevel(id: number): Promise<void> {
     this.sfx.stopFireworks()
     this.level = levelById(id)
     this.sfx.prepareRecital(this.level.id)
     this.plan = planHeist(this.level, this.save.dex)
-    this.assets.loadPlay(this.plan.thief, this.plan.guest)
+    if (!await this.openScene(() => this.assets.loadPlay(this.plan.thief, this.plan.guest), this.plan.thief)) return
     this.screen = 'play'
     this.path = []
     this.guidance = []
@@ -295,6 +322,7 @@ export class App {
     this.pausedAccum = 0
     this.pauseStarted = 0
     this.timeLimit = this.level.timeLimit
+    if (this.hidden) this.pause()
     this.lastTick = -1
     this.lastCell = ''
     this.lastError = ''
@@ -482,7 +510,8 @@ export class App {
     return null
   }
 
-  private activate(id: string): void {
+  private async activate(id: string): Promise<void> {
+    if (this.screen === 'loading') return
     this.sfx.tap()
     if (id === 'modal:block') {
       if (this.reward) {
@@ -529,8 +558,9 @@ export class App {
       return
     }
     if (id === 'cottage') {
+      const residents = SPECIES_IDS.filter(id => this.save.dex[id] > 0)
+      if (!await this.openScene(() => this.assets.loadRoom(residents))) return
       this.cottageAt = performance.now()
-      this.assets.loadRoom(SPECIES_IDS.filter(id => this.save.dex[id] > 0))
       this.screen = 'cottage'
       return
     }
@@ -720,6 +750,7 @@ export class App {
       pressed: this.pressed,
       screen: this.screen,
       cottageAt: this.cottageAt,
+      loadingHero: this.loadingHero,
       rankTab: this.rankTab,
       detail: this.detail,
       shared: this.screen === 'rank' ? this.platform.sharedCanvas() : null,

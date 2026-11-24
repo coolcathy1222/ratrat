@@ -87,40 +87,8 @@ function book(ctx: CanvasRenderingContext2D, drawing: boolean, t: number) {
   }
 }
 
-function footstool(ctx: CanvasRenderingContext2D) {
-  ctx.save()
-  ctx.translate(481, 809)
-  ctx.scale(1.18, 1.18)
-  ctx.rotate(-.042)
-  oval(ctx, 5, 44, 47, 8, 'rgba(75,49,29,.20)')
-  ctx.lineCap = 'round'
-  for (const [x,y] of [[0,28],[-32,44],[31,44]]) {
-    ctx.strokeStyle = '#70503A'
-    ctx.lineWidth = 9
-    ctx.beginPath()
-    ctx.moveTo(x*.78,4); ctx.lineTo(x,y); ctx.stroke()
-    ctx.strokeStyle = '#C08A51'
-    ctx.lineWidth = 3
-    ctx.stroke()
-  }
-  oval(ctx,0,5,43,14,'#9E673F')
-  ctx.lineWidth = 2.5
-  ctx.strokeStyle = '#70503A'; ctx.stroke()
-  oval(ctx,0,0,43,14,'#D6AC74')
-  ctx.stroke()
-  oval(ctx,0,-3,36,10,'#98A78B')
-  ctx.save()
-  ctx.setLineDash([3,4])
-  ctx.strokeStyle = '#DEDAC0'
-  ctx.lineWidth = 1.4
-  ctx.beginPath(); ctx.ellipse(0,-3,31,7,0,0,Math.PI*2); ctx.stroke()
-  ctx.restore()
-  ctx.restore()
-}
-
 export function cottageResidents(ctx: CanvasRenderingContext2D, assets: AssetBook, residents: Species[], elapsed: number) {
   const backRow = residents.length > 3 ? Math.ceil(residents.length/2) : 0
-  footstool(ctx)
   for (const [i,id] of residents.entries()) {
     const back = i < backRow
     const rowSize = back ? backRow : residents.length-backRow

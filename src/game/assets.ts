@@ -9,6 +9,7 @@ const SCENES = {cottage:'cottage.jpg',supplies:'supplies.png', suppliesPlain:'su
 export class AssetBook {
   calm: Partial<Record<Species, Sprite>> = {}
   shadow: Partial<Record<Species, Sprite>> = {}
+  meadow: Sprite | undefined
   creamEmpty: Sprite | undefined
   hole: Sprite | undefined
   scenes: Partial<Record<keyof typeof SCENES, Sprite>> = {}
@@ -16,7 +17,7 @@ export class AssetBook {
   readonly openedAt = performance.now()
   ready = false
 
-  private requested = new Set<string>()
+  private requested = new Map<string, Promise<boolean>>()
 
   constructor(private base: string, private make: MakeSprite, private webArt?: string) {}
 
@@ -28,23 +29,22 @@ export class AssetBook {
     this.ready = true
   }
 
-  loadPlay(hero: Species, guest: Species | null): void {
-    void this.portrait(hero, 'calm')
-    if (guest) {
-      void this.portrait(guest, 'calm')
-      void this.portrait(guest, 'shadow')
-    }
-    void this.get('heads/hole.png', image => { this.hole = image })
-    void this.scene('suppliesPlain')
-    void this.scene('supplies')
-    void this.scene('lookout')
+  async loadPlay(hero: Species, guest: Species | null): Promise<boolean> {
+    const images = [
+      this.portrait(hero, 'calm'),
+      this.get('heads/hole.png', image => { this.hole = image }),
+      this.get('harvest-postcard.jpg', image => { this.meadow = image }),
+      this.scene('suppliesPlain'), this.scene('supplies'), this.scene('lookout'),
+    ]
+    if (guest) images.push(this.portrait(guest, 'calm'), this.portrait(guest, 'shadow'))
+    return (await Promise.all(images)).every(Boolean)
   }
 
-  loadRoom(residents: Species[]): void {
-    void this.scene('cottage')
-    for (const id of residents) void this.portrait(id, 'calm')
-    void this.get('crew/cream-empty.png', image => { this.creamEmpty = image })
-    void this.scene('suppliesPlain')
+  async loadRoom(residents: Species[]): Promise<boolean> {
+    const images = [this.scene('cottage'), this.scene('suppliesPlain'),
+      ...residents.map(id => this.portrait(id, 'calm'))]
+    if (residents.includes('cream')) images.push(this.get('crew/cream-empty.png', image => { this.creamEmpty = image }))
+    return (await Promise.all(images)).every(Boolean)
   }
 
   loadDex(): void {
@@ -54,28 +54,41 @@ export class AssetBook {
     }
   }
 
-  scene(name: keyof typeof SCENES): Promise<void> {
+  scene(name: keyof typeof SCENES): Promise<boolean> {
     return this.get(`squad/${SCENES[name]}`, image => { this.scenes[name] = image })
   }
 
-  private portrait(id: Species, kind: 'calm' | 'shadow'): Promise<void> {
+  private portrait(id: Species, kind: 'calm' | 'shadow'): Promise<boolean> {
     return this.get(`crew/${id}-${kind}.png`, image => { this[kind][id] = image })
   }
 
-  private async get(path: string, store: (image: Sprite) => void): Promise<void> {
-    if (this.requested.has(path)) return
-    this.requested.add(path)
-    const compact = this.webArt && await this.read(`${this.webArt}/${path.replace(/\.\w+$/, '.webp')}`)
-    const image = compact || await this.read(`${this.base}/${path}`)
-    if (image) store(image)
-    else this.requested.delete(path)
+  private get(path: string, store: (image: Sprite) => void): Promise<boolean> {
+    const existing = this.requested.get(path)
+    if (existing) return existing
+    const load = async () => {
+      const compact = this.webArt && await this.read(`${this.webArt}/${path.replace(/\.\w+$/, '.webp')}`)
+      const image = compact || await this.read(`${this.base}/${path}`)
+      if (image) store(image)
+      else this.requested.delete(path)
+      return !!image
+    }
+    const pending = load()
+    this.requested.set(path, pending)
+    return pending
   }
 
   private read(src: string): Promise<Sprite | undefined> {
     return new Promise(resolve => {
       const image = this.make()
-      image.onload = () => resolve(image.width > 0 ? image : undefined)
-      image.onerror = () => resolve(undefined)
+      const finish = (result?: Sprite) => {
+        clearTimeout(timeout)
+        image.onload = null
+        image.onerror = null
+        resolve(result)
+      }
+      const timeout = setTimeout(() => finish(), 15000)
+      image.onload = () => finish(image.width > 0 ? image : undefined)
+      image.onerror = () => finish()
       image.src = src
     })
   }

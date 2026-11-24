@@ -11,7 +11,7 @@ import { CHESTS, RELICS, GOODS, GOOD_IDS, TOOL, type Heist, type Haul } from '..
 import { cottageResidents } from './cottage'
 import { levelPhrase, recitalMs } from './mozart'
 import { lootArt } from './loot-art'
-import { bagPose, CLOSE_AT, pocketPosition, nightSky, pulsePhase, tileSparks, waveDelay, celebrateMs } from './celebration'
+import { bagPose, CLOSE_AT, HERO_PORTRAIT, MEET_MS, pocketPosition, nightSky, pulsePhase, tileSparks, waveDelay, celebrateMs } from './celebration'
 
 export interface Hot extends Rect {
   id: string
@@ -44,7 +44,8 @@ export interface Frame {
   assets: AssetBook
   save: SaveData
   pressed: string | null
-  screen: 'home' | 'play' | 'dex' | 'rank' | 'warehouse' | 'cottage'
+  screen: 'home' | 'loading' | 'play' | 'dex' | 'rank' | 'warehouse' | 'cottage'
+  loadingHero: Species | null
   cottageAt: number
   rankTab: 'total' | 'daily'
   detail: Species | null
@@ -310,14 +311,57 @@ function traceRibbon(ctx: CanvasRenderingContext2D, centers: Array<{ x: number; 
   ctx.lineTo(last.x, last.y)
 }
 
+function meadowPostcard(frame: Frame, age: number): void {
+  const ctx = frame.ctx
+  const reveal = Math.min(1,(age-CLOSE_AT+430)/650)
+  if (reveal <= 0 || !frame.assets.meadow) return
+  ctx.save()
+  ctx.globalAlpha = reveal
+  ctx.save()
+  const travel = Math.min(1,Math.max(0,(age-CLOSE_AT)/MEET_MS))
+  const settle = travel*travel*(3-2*travel)
+  ctx.translate(360,490+12*(1-reveal)-108*settle)
+  ctx.scale(1-.32*settle,1-.32*settle)
+  ctx.rotate(-.035)
+  fillRound(ctx,{x:-293,y:-154,w:586,h:324},13,'#BFB99A')
+  fillRound(ctx,{x:-294,y:-160,w:586,h:324},13,paper)
+  roundRect(ctx,-283,-149,564,298,8)
+  ctx.clip()
+  ctx.drawImage(frame.assets.meadow,-283,-149,564,298)
+  ctx.restore()
+  for (let i=0; i<10; i++) {
+    const x=94+i*58
+    const y=776+33*Math.sin(i*.62)+(i%2)*13
+    ctx.save()
+    ctx.translate(x,y)
+    ctx.rotate(1.43+.28*Math.cos(i*.62))
+    ctx.globalAlpha = reveal*(.25+.55*Math.max(0,1-Math.abs((age/290)%13-i)))
+    mark(ctx,'paw',0,0,.75,'#8A7857')
+    ctx.restore()
+  }
+  for (const [x,y,r] of [[76,731,13],[121,720,8],[585,843,9],[617,826,15]]) {
+    flower(ctx,x,y,r)
+  }
+  ctx.restore()
+}
+
 function pocket(frame: Frame, age: number, front: boolean): void {
   const ctx = frame.ctx
-  const pose = bagPose(age,recitalMs(levelPhrase(frame.play!.level.id)))
+  const hero = frame.play!.plan.thief
+  const sprite = frame.assets.calm[hero]
+  const pose = bagPose(age,recitalMs(levelPhrase(frame.play!.level.id)),sprite ? sprite.width/sprite.height : 1)
+  if (front && age>=CLOSE_AT) {
+    ctx.save()
+    ctx.translate(pose.heroX,pose.heroY)
+    ctx.rotate(pose.stride*.045+pose.lift*.04)
+    paintHead(ctx,sprite,SPECIES_COLOR[hero],-pose.heroSize/2,-pose.heroSize/2,pose.heroSize,pose.heroSize)
+    ctx.restore()
+  }
   const mouth = 91-78*pose.close
   const bounce = age < CLOSE_AT ? Math.sin(age/70)*Math.sin(Math.PI*age/CLOSE_AT) : 0
   ctx.save()
   ctx.translate(pose.x,pose.y)
-  ctx.rotate(-pose.lift*.26+pose.stride*.06)
+  ctx.rotate(-pose.lift*.10+pose.stride*.06)
   ctx.scale(pose.scale*(1+bounce*.018),pose.scale*(1-bounce*.028))
   ctx.lineWidth = 5
   ctx.strokeStyle = '#604638'
@@ -348,19 +392,6 @@ function pocket(frame: Frame, age: number, front: boolean): void {
     }
   }
   ctx.restore()
-  if (front && age>CLOSE_AT-150) {
-    const hero = frame.play!.plan.thief
-    ctx.save()
-    ctx.translate(pose.heroX,pose.heroY)
-    ctx.rotate(pose.stride*.045+pose.lift*.04)
-    paintHead(ctx, frame.assets.calm[hero],SPECIES_COLOR[hero],-76,-154,152,154)
-    if (pose.lift>0) {
-      ctx.globalAlpha=pose.lift
-      ctx.strokeStyle='#965E38'; ctx.lineWidth=5; ctx.lineCap='round'
-      ctx.beginPath();ctx.moveTo(-53,-107);ctx.quadraticCurveTo(-30,-101,-14,-76);ctx.stroke()
-    }
-    ctx.restore()
-  }
 }
 
 function drawBoard(
@@ -380,7 +411,10 @@ function drawBoard(
   const ready = path.filter((cell) => appearScale(frame.now, opts.spawnAt, spawnDelay(level, cell)) >= 0.98)
   ctx.save()
   ctx.translate(ox, 0)
-  if (pocketAge >= 0) pocket(frame, pocketAge, false)
+  if (pocketAge >= 0) {
+    meadowPostcard(frame,pocketAge)
+    pocket(frame, pocketAge, false)
+  }
   if (ready.length > 1 && pocketAge < 0) {
     const centers = ready.map((cell) => cellCenter(geom, cell))
     const width = Math.max(18, geom.cell * 0.22)
@@ -614,13 +648,16 @@ function drawPlay(frame: Frame, play: PlayView): void {
   const tray = {x: 22, y: 151, w: 676, h: 782}
   surface(ctx, tray, 32, '#DBDABA', '#B2AE8E')
   stitches(ctx, {x: 31, y: 160, w: 658, h: 764}, 25, '#FFF2D7')
-  const crewBadge = (species: Species, title: string, x: number, bg: string) => {
+  const heroDeparted = play.won && frame.now >= play.winAt+celebrateMs(play.path.length)+CLOSE_AT
+  const crewBadge = (species: Species, title: string, x: number, bg: string, departed = false) => {
     fillRound(ctx, {x, y: 167, w: 188, h: 60}, 17, bg)
-    paintHead(ctx, frame.assets.calm[species], SPECIES_COLOR[species], x+6, 169, 56, 56)
+    const size = HERO_PORTRAIT.size
+    if (!departed) paintHead(ctx,frame.assets.calm[species],SPECIES_COLOR[species],x+6,HERO_PORTRAIT.y-size/2,size,size)
+    else mark(ctx,'paw',HERO_PORTRAIT.x,HERO_PORTRAIT.y,.85,'#D5B798')
     label(ctx, title, x+71, 182, 17, muted, 'left')
     label(ctx, SPECIES_NAME[species], x+71, 209, 25, ink, 'left')
   }
-  crewBadge(play.plan.thief, '本关主角', 45, '#FFF2D9')
+  crewBadge(play.plan.thief, '本关主角', HERO_PORTRAIT.x-HERO_PORTRAIT.size/2-6, '#FFF2D9',heroDeparted)
   if (play.plan.guest) crewBadge(play.plan.guest, '新鼠出没', 246, '#FFE3CC')
   const remaining = play.remaining
   label(ctx, remaining != null ? `倒计时  ${formatTime(remaining)}` : '自由探索', 654, 202, 23, remaining != null && remaining <= 5 ? berry : ink, 'right')
@@ -1094,7 +1131,7 @@ function drawToast(frame: Frame, text: string): void {
 }
 
 export function render(frame: Frame): void {
-  if (!frame.assets.ready) {
+  if (!frame.assets.ready || frame.screen === 'loading') {
     const ctx = frame.ctx
     const elapsed = Math.max(0, frame.now - frame.assets.openedAt)
     const beat = Math.sin(elapsed / 205)
@@ -1102,14 +1139,17 @@ export function render(frame: Frame): void {
     ctx.fillRect(0,0,STAGE.w,STAGE.h)
     label(ctx,'FIELD SQUAD    /    集合号',360,259,23,muted)
     label(ctx,'鼠鼠大作战',360,348,69,ink,'center',800)
-    if (frame.assets.scenes.assembly) {
+    const hero = frame.screen === 'loading' ? frame.loadingHero : null
+    const art = hero ? frame.assets.calm[hero] : frame.assets.scenes.assembly
+    if (art) {
       ctx.save()
       ctx.translate(360,775 - Math.max(0,beat)*8)
       ctx.rotate(beat*.012)
       ctx.scale(1-beat*.012,1+beat*.014)
-      paintHead(ctx,frame.assets.scenes.assembly,paper,-216,-408,432,432)
+      const size = hero ? 280 : 432
+      paintHead(ctx,art,paper,-size/2,-192-size/2,size,size)
       const butterfly = frame.assets.scenes.butterfly
-      if (butterfly) {
+      if (butterfly && !hero) {
         const flutter = Math.sin(elapsed / 69)
         const width = 27 + 10 * flutter
         const flyX = 184 + 7 * Math.sin(elapsed / 230)
@@ -1120,9 +1160,9 @@ export function render(frame: Frame): void {
     } else {
       mark(ctx,'paw',360,600+beat*6,3,accent)
     }
-    label(ctx,'小队集合中',360,868,29,ink)
-    fillRound(ctx,{x:204,y:921,w:312,h:12},6,'#E5D4BB')
-    const width = 312 * frame.assets.progress
+    label(ctx,hero ? `${SPECIES_NAME[hero]}准备出发` : '小队集合中',360,868,29,ink)
+    if (frame.screen !== 'loading') fillRound(ctx,{x:204,y:921,w:312,h:12},6,'#E5D4BB')
+    const width = frame.screen === 'loading' ? 0 : 312 * frame.assets.progress
     if (width > 0) fillRound(ctx,{x:204,y:921,w:width,h:12},6,accent)
     for (let index=0; index<3; index++) {
       const hop=Math.max(0,Math.sin(elapsed/150-index*.9))

@@ -1,13 +1,16 @@
-import { STAGE } from './geom'
+import { PLAY_AREA, STAGE } from './geom'
 
 const TILE_MS = 1760
 export const STAGGER_MS = 520
 export const FLIGHT_MS = 1340
 export const CLOSE_AT = STAGGER_MS + FLIGHT_MS + 100
 const CINCH_MS = 510
+export const MEET_MS = 1250
+export const HERO_PORTRAIT = {x: 79, y: 197, size: 56}
+const BOARD_CENTER = {x: PLAY_AREA.x + PLAY_AREA.w/2, y: PLAY_AREA.y + PLAY_AREA.h/2}
 const SHOULDER_MS = 420
 const WALK_MS = 1150
-export const POCKET_MS = CLOSE_AT + CINCH_MS + SHOULDER_MS + WALK_MS
+export const POCKET_MS = CLOSE_AT + MEET_MS + SHOULDER_MS + WALK_MS
 export const POCKET_MOUTH = {x: 360, y: 1015}
 
 function smooth(t: number): number {
@@ -15,21 +18,35 @@ function smooth(t: number): number {
   return u*u*(3-2*u)
 }
 
-export function bagPose(age: number, musicMs = POCKET_MS-CLOSE_AT) {
-  const close = smooth((age-CLOSE_AT)/CINCH_MS)
-  const lift = smooth((age-CLOSE_AT-CINCH_MS)/SHOULDER_MS)
-  const walkMs = Math.max(WALK_MS,musicMs-CINCH_MS-SHOULDER_MS)
-  const walk = Math.max(0, Math.min(1,(age-CLOSE_AT-CINCH_MS-SHOULDER_MS)/walkMs))
+export function bagPose(age: number, musicMs = POCKET_MS-CLOSE_AT, aspect = 1) {
+  const elapsed = age-CLOSE_AT
+  const close = smooth(elapsed/CINCH_MS)
+  const approach = smooth(elapsed/MEET_MS)
+  const lift = smooth((elapsed-MEET_MS)/SHOULDER_MS)
+  const walkMs = Math.max(WALK_MS,musicMs-MEET_MS-SHOULDER_MS)
+  const walk = Math.max(0, Math.min(1,(elapsed-MEET_MS-SHOULDER_MS)/walkMs))
   const steps = Math.round(walkMs/195)
-  const stride = Math.sin(walk*Math.PI*steps)
-  const step = Math.abs(stride)
-  const dx = walk*walk*(2-walk)*510
+  const stride = Math.sin(approach*Math.PI*8) + Math.sin(walk*Math.PI*steps)
+  const hop = Math.abs(stride)*8
+  const exit = walk*walk*(2-walk)
+  const dx = exit*535
+  const dy = exit*185
+  // paintHead fits the sprite in a square. Match the belt position to the actual torso.
+  const bodyWidth = 152*Math.min(1,aspect)
+  const bodyHeight = 152*Math.min(1,1/aspect)
+  const waistX = -bodyWidth*.40
+  const waistY = bodyHeight*.06
+  const pouchScale = bodyHeight*.32/150
   return {
     close, lift, stride,
-    x: POCKET_MOUTH.x+dx+lift*21, y: POCKET_MOUTH.y+175*(1-smooth(age/270))-lift*8-step*10,
-    scale: 1-.55*lift,
-    heroX: 845-402*smooth((age-CLOSE_AT+150)/660)+dx,
-    heroY: 1148-step*10+Math.sin(lift*Math.PI)*12,
+    x: POCKET_MOUTH.x - approach*34 + lift*(waistX+34) + dx,
+    y: POCKET_MOUTH.y + 175*(1-smooth(age/270))
+      + (BOARD_CENTER.y+waistY+4-POCKET_MOUTH.y)*approach - lift*4 + dy - hop*lift,
+    scale: 1 - .60*approach + (pouchScale-.40)*lift,
+    heroSize: HERO_PORTRAIT.size + (152-HERO_PORTRAIT.size)*approach,
+    heroX: HERO_PORTRAIT.x + (BOARD_CENTER.x-HERO_PORTRAIT.x)*approach + dx,
+    heroY: HERO_PORTRAIT.y + (BOARD_CENTER.y-HERO_PORTRAIT.y)*approach
+      - 30*Math.sin(Math.PI*approach) + Math.sin(lift*Math.PI)*8 + dy-hop,
   }
 }
 

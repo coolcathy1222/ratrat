@@ -43,7 +43,13 @@ canvas.addEventListener('pointerup', (event) => {
   app.pointer('up', p.x, p.y)
 })
 canvas.addEventListener('pointercancel', () => app.pointer('up', -1, -1))
-document.addEventListener('visibilitychange', () => app.setHidden(document.hidden))
+function syncVisibility(): void {
+  app.setHidden(document.hidden)
+}
+document.addEventListener('visibilitychange', syncVisibility)
+window.addEventListener('pageshow', syncVisibility)
+window.addEventListener('pagehide', () => app.setHidden(true))
+window.addEventListener('focus', syncVisibility)
 app.start()
 
 if (import.meta.env.DEV) {

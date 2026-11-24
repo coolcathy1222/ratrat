@@ -41,17 +41,40 @@ export class Sfx {
 
   setVisible(visible: boolean): void {
     this.visible = visible
+    if (!visible) {
+      this.stopMusic()
+      if (this.ctx && this.master) {
+        this.master.gain.setTargetAtTime(0,this.ctx.currentTime,.008)
+        if (this.ctx.state === 'running') {
+          const ctx = this.ctx
+          void ctx.suspend?.()?.then(() => {
+            if (this.visible && this.enabled && this.ctx === ctx) this.unlock()
+          }).catch(() => {})
+        }
+      }
+      return
+    }
     this.updatePlayback()
   }
 
   private updatePlayback(): void {
     const audible = this.enabled && this.visible
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(audible ? .78 : 0, this.ctx.currentTime, .012)
-    if (audible) this.startMusic()
+    if (audible && this.ctx) this.unlock()
     else { this.stopMusic(); this.stopFireworks() }
   }
 
   unlock(): void {
+    if (!this.visible) return
+    if (this.ctx?.state === 'closed') {
+      this.stopMusic()
+      this.ctx.onstatechange = null
+      this.ctx = null
+      this.master = null
+      this.musicGain = null
+      this.recitalBus = null
+      this.rockets.clear()
+    }
     if (!this.ctx) {
       const host = globalThis as typeof globalThis & { webkitAudioContext?: typeof AudioContext }
       const Ctx = host.AudioContext ?? host.webkitAudioContext
@@ -60,10 +83,13 @@ export class Sfx {
       this.master = this.ctx.createGain()
       this.master.gain.value = this.enabled && this.visible ? .78 : 0
       this.master.connect(this.ctx.destination)
+      this.ctx.onstatechange = () => {
+        if (this.enabled && this.visible && this.ctx?.state === 'running') this.startMusic()
+      }
       void this.loadBurst(this.ctx)
     }
     if (this.enabled && this.visible) {
-      if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {})
+      if (this.ctx.state !== 'running') void this.ctx.resume?.()?.catch(() => {})
       this.startMusic()
     }
   }
@@ -311,7 +337,7 @@ export class Sfx {
 
   private pump(): void {
     if (!this.ctx || !this.musicWanted || !this.enabled || !this.musicGain) return
-    if (this.ctx.state === 'suspended') return
+    if (this.ctx.state && this.ctx.state !== 'running') return
     const beat = 60 / 128
     const now = this.ctx.currentTime
     if (this.nextNote < now) this.nextNote = now + .015
